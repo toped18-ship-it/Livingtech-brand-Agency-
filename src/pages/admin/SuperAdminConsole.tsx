@@ -29,6 +29,7 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { useAuth } from '../../context/AuthContext';
+import { useSystemSettings } from '../../context/SystemSettingsContext';
 import { apiClient } from '../../lib/apiClient';
 import { formatCurrencyCents, hasSuperAdminAccess } from '../../utils/domain';
 import { AdminSocialPlatformsPanel } from '../../components/admin/AdminSocialPlatformsPanel';
@@ -85,6 +86,7 @@ export const SuperAdminConsole: React.FC<SuperAdminConsoleProps> = ({
   onReturnCustomerApp,
 }) => {
   const { user, logout } = useAuth();
+  const { settings: globalSettings, refreshSettings } = useSystemSettings();
   const isAuthorized = hasSuperAdminAccess(user?.role);
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -297,12 +299,15 @@ export const SuperAdminConsole: React.FC<SuperAdminConsoleProps> = ({
     }
   };
 
-  const handleSaveSetting = async (key: string) => {
+  const handleSaveSetting = async (key: string, overrideValue?: string) => {
     setError(null);
     setNotice(null);
+    const val = overrideValue !== undefined ? overrideValue : (settingDrafts[key] ?? '');
     try {
-      await apiClient.updateAdminSetting(key, settingDrafts[key] ?? '');
-      setNotice(`System setting "${key}" saved.`);
+      await apiClient.updateAdminSetting(key, val);
+      setSettingDrafts((prev) => ({ ...prev, [key]: val }));
+      await refreshSettings();
+      setNotice(`System setting "${key}" saved and applied across the application.`);
       await loadSectionData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to save system setting.');
@@ -345,10 +350,10 @@ export const SuperAdminConsole: React.FC<SuperAdminConsoleProps> = ({
       >
         <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-800 px-4">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="flex h-9 w-28 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white px-1">
+            <div className="lt-logo-frame flex h-9 w-28 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white px-1">
               <img
-                src="/assets/aistudio/20261112_184805_8a13799e.jpg"
-                alt="LIVINGTECH"
+                src={globalSettings.app_logo_url || '/assets/aistudio/20261112_184805_8a13799e.jpg'}
+                alt={globalSettings.app_name || 'LIVINGTECH'}
                 referrerPolicy="no-referrer"
                 className="h-full w-full object-contain scale-[1.22]"
               />
@@ -463,7 +468,7 @@ export const SuperAdminConsole: React.FC<SuperAdminConsoleProps> = ({
           {section === 'overview' && overview && (
             <div className="space-y-6">
               <div className="lt-neon-hero rounded-2xl p-6 text-white">
-                <p className="text-xs font-semibold text-amber-400">LIVINGTECH BRAND AGENCY · Platform Telemetry</p>
+                <p className="text-xs font-semibold text-amber-400">{globalSettings.app_name || 'LIVINGTECH BRAND AGENCY'} · Platform Telemetry</p>
                 <h2 className="mt-1 font-display text-2xl font-bold">Multi-Tenant Operations Overview</h2>
                 <p className="mt-1.5 text-xs text-blue-100/90 max-w-2xl">
                   Real-time metrics read directly from the relational database across all customer organisations, workspaces, AI usage ledgers, and publishing job queues.
@@ -676,9 +681,8 @@ export const SuperAdminConsole: React.FC<SuperAdminConsoleProps> = ({
                             onChange={(e) => void handleUpdateSubscription(sub.id, { planCode: e.target.value })}
                             className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-800"
                           >
-                            <option value="starter">Starter</option>
-                            <option value="growth">Growth</option>
-                            <option value="agency">Agency</option>
+                            <option value="basic">Basic</option>
+                            <option value="pro">Pro</option>
                             <option value="enterprise">Enterprise</option>
                           </select>
                         </td>
@@ -718,11 +722,11 @@ export const SuperAdminConsole: React.FC<SuperAdminConsoleProps> = ({
                   <div className="mt-4 h-56 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={aiChartData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                        <XAxis dataKey="feature" tick={{ fontSize: 12, fill: '#475569' }} />
-                        <YAxis tick={{ fontSize: 12, fill: '#475569' }} />
-                        <Tooltip />
-                        <Bar dataKey="credits" fill="#0052FF" radius={[6, 6, 0, 0]} />
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.18)" />
+                        <XAxis dataKey="feature" tick={{ fontSize: 12, fill: '#E2E8F0' }} />
+                        <YAxis tick={{ fontSize: 12, fill: '#E2E8F0' }} />
+                        <Tooltip contentStyle={{ backgroundColor: '#071436', border: '1px solid rgba(56,189,248,0.45)', borderRadius: '10px', color: '#FFFFFF' }} />
+                        <Bar dataKey="credits" fill="#38BDF8" radius={[6, 6, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -870,38 +874,116 @@ export const SuperAdminConsole: React.FC<SuperAdminConsoleProps> = ({
 
           {/* 8. SYSTEM SETTINGS */}
           {section === 'system-settings' && (
-            <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
-              <div>
-                <h2 className="font-display text-base font-bold text-slate-900">Global System Settings</h2>
-                <p className="text-xs text-slate-500">Configure runtime flags, default trial AI credit grants, and publishing worker safeguards.</p>
+            <div className="space-y-6">
+              {/* App Details, Contents & Font Color Editor */}
+              <div className="lt-neon-card rounded-xl p-5 space-y-4">
+                <div>
+                  <h2 className="font-display text-base font-bold text-slate-900">App Details, Contents & Font Color</h2>
+                  <p className="text-xs text-slate-500">
+                    Customize global application branding, welcome copy, footer text, logo URL, and global font color. Changes apply immediately across the app.
+                  </p>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {settings
+                    .filter((s) => s.key.startsWith('app_'))
+                    .map((setting) => {
+                      const isColor = setting.key === 'app_font_color';
+                      const draftVal = settingDrafts[setting.key] ?? '';
+                      return (
+                        <div key={setting.key} className="flex flex-col gap-3 py-4 lg:flex-row lg:items-center lg:justify-between">
+                          <div className="min-w-0">
+                            <p className="font-mono-tabular text-xs font-bold text-slate-900">{setting.key}</p>
+                            <p className="mt-0.5 text-xs text-slate-500">{setting.description}</p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 shrink-0">
+                            {isColor && (
+                              <>
+                                <input
+                                  type="color"
+                                  aria-label="Pick global font color"
+                                  value={/^#[0-9a-fA-F]{6}$/.test(draftVal) ? draftVal : '#ffffff'}
+                                  onChange={(e) =>
+                                    setSettingDrafts((prev) => ({ ...prev, [setting.key]: e.target.value }))
+                                  }
+                                  className="h-9 w-11 cursor-pointer rounded-lg border border-sky-400/40 bg-[#071436] p-0.5"
+                                />
+                                {[
+                                  { label: 'Pure White', hex: '#ffffff' },
+                                  { label: 'Ice Blue', hex: '#e0f2fe' },
+                                  { label: 'Warm Cream', hex: '#fef9c3' },
+                                  { label: 'Soft Mint', hex: '#d1fae5' },
+                                ].map((preset) => (
+                                  <button
+                                    key={preset.hex}
+                                    type="button"
+                                    title={`Apply ${preset.label} (${preset.hex})`}
+                                    onClick={() => void handleSaveSetting(setting.key, preset.hex)}
+                                    className="rounded-md border border-sky-400/35 bg-[#071436] px-2 py-1 text-[11px] font-semibold text-white hover:border-sky-300"
+                                  >
+                                    {preset.label}
+                                  </button>
+                                ))}
+                              </>
+                            )}
+                            <input
+                              type="text"
+                              aria-label={setting.key}
+                              value={draftVal}
+                              onChange={(e) =>
+                                setSettingDrafts((prev) => ({ ...prev, [setting.key]: e.target.value }))
+                              }
+                              className={`${isColor ? 'w-28' : 'w-full sm:w-72'} rounded-lg border border-slate-300 px-3 py-1.5 font-mono-tabular text-xs focus:border-blue-600 focus:outline-none`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => void handleSaveSetting(setting.key)}
+                              className="rounded-lg bg-blue-700 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-800 whitespace-nowrap"
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
               </div>
-              <div className="divide-y divide-slate-100">
-                {settings.map((setting) => (
-                  <div key={setting.key} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                      <p className="font-mono-tabular text-xs font-bold text-slate-900">{setting.key}</p>
-                      <p className="mt-0.5 text-xs text-slate-500">{setting.description}</p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <input
-                        type="text"
-                        aria-label={setting.key}
-                        value={settingDrafts[setting.key] ?? ''}
-                        onChange={(e) =>
-                          setSettingDrafts((prev) => ({ ...prev, [setting.key]: e.target.value }))
-                        }
-                        className="w-44 rounded-lg border border-slate-300 px-3 py-1.5 font-mono-tabular text-xs focus:border-blue-600 focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => void handleSaveSetting(setting.key)}
-                        className="rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-800 whitespace-nowrap"
-                      >
-                        Save
-                      </button>
-                    </div>
-                  </div>
-                ))}
+
+              {/* Platform Runtime & Security Settings */}
+              <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
+                <div>
+                  <h2 className="font-display text-base font-bold text-slate-900">Platform Runtime & Security Settings</h2>
+                  <p className="text-xs text-slate-500">Configure registration flags, default trial AI credit grants, and publishing worker safeguards.</p>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {settings
+                    .filter((s) => !s.key.startsWith('app_'))
+                    .map((setting) => (
+                      <div key={setting.key} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="font-mono-tabular text-xs font-bold text-slate-900">{setting.key}</p>
+                          <p className="mt-0.5 text-xs text-slate-500">{setting.description}</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <input
+                            type="text"
+                            aria-label={setting.key}
+                            value={settingDrafts[setting.key] ?? ''}
+                            onChange={(e) =>
+                              setSettingDrafts((prev) => ({ ...prev, [setting.key]: e.target.value }))
+                            }
+                            className="w-44 rounded-lg border border-slate-300 px-3 py-1.5 font-mono-tabular text-xs focus:border-blue-600 focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void handleSaveSetting(setting.key)}
+                            className="rounded-lg bg-blue-700 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-800 whitespace-nowrap"
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
               </div>
             </div>
           )}

@@ -523,6 +523,7 @@ export const apiClient = {
     request<PublishingJobRecord[]>(`/api/admin/jobs${onlyFailed ? '?status=failed' : ''}`),
   retryAdminJob: (jobId: string) =>
     request<{ success: boolean }>(`/api/admin/jobs/${jobId}/retry`, { method: 'POST' }),
+  getSettings: () => request<Record<string, string>>('/api/settings'),
   getAdminSettings: () => request<SystemSettingRecord[]>('/api/admin/settings'),
   updateAdminSetting: (key: string, value: string) =>
     request<{ success: boolean }>('/api/admin/settings', {

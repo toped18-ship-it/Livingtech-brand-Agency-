@@ -5,17 +5,24 @@
     --lt-navy-950: #050e28;
     --lt-navy-900: #071436;
     --lt-navy-800: #0b1f52;
+    --lt-navy-700: #112a69;
     --lt-royal-600: #0052ff;
     --lt-royal-500: #1d4ed8;
     --lt-cyan-400: #38bdf8;
     --lt-gold-500: #f59e0b;
+    --app-font-color: #ffffff;
+    --app-font-secondary: color-mix(in srgb, var(--app-font-color, #ffffff) 88%, #bae6fd);
+  }
+
+  html {
+    color-scheme: dark;
   }
 
   body {
     font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
     font-weight: 500;
-    background-color: #f8fafc;
-    color: #050e28;
+    background: linear-gradient(135deg, #050e28 0%, #071436 45%, #0b1f52 100%);
+    color: var(--app-font-color, #ffffff);
     overflow-x: hidden;
     min-height: 100vh;
   }
@@ -24,6 +31,7 @@
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
     font-weight: 800;
     text-wrap: balance;
+    color: var(--app-font-color, #ffffff);
   }
 
   .font-mono-tabular {
@@ -34,25 +42,43 @@
   .tabular-nums {
     font-variant-numeric: tabular-nums;
   }
+
+  input:not([type='checkbox']):not([type='radio']):not([type='color']):not([type='range']),
+  textarea,
+  select {
+    background-color: #071436;
+    color: var(--app-font-color, #ffffff);
+    border-color: rgba(56, 189, 248, 0.35);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: rgba(226, 232, 240, 0.62);
+  }
+
+  select option {
+    background-color: #071436;
+    color: #ffffff;
+  }
 }
 
 /* Signature LIVINGTECH Enterprise Gradient + Luminous Neon Border Cards */
 .lt-neon-hero {
   background: linear-gradient(135deg, #071436 0%, #0b2260 52%, #0047db 100%);
-  border: 1px solid rgba(56, 189, 248, 0.4);
+  border: 1px solid rgba(56, 189, 248, 0.45);
   box-shadow:
-    0 12px 32px -14px rgba(0, 82, 255, 0.5),
-    inset 0 1px 0 rgba(125, 211, 252, 0.3);
-  color: #ffffff;
+    0 12px 32px -14px rgba(0, 82, 255, 0.55),
+    inset 0 1px 0 rgba(125, 211, 252, 0.32);
+  color: var(--app-font-color, #ffffff);
 }
 
 .lt-neon-card {
-  background: linear-gradient(140deg, rgba(11, 31, 82, 0.88) 0%, rgba(18, 45, 112, 0.94) 100%);
+  background: linear-gradient(140deg, rgba(11, 31, 82, 0.92) 0%, rgba(18, 45, 112, 0.96) 100%);
   border: 1.5px solid rgba(56, 189, 248, 0.35);
   box-shadow:
-    0 4px 24px -6px rgba(0, 82, 255, 0.45),
+    0 4px 24px -6px rgba(0, 82, 255, 0.42),
     inset 0 1px 0 rgba(125, 211, 252, 0.25);
-  color: #f8fafc;
+  color: var(--app-font-color, #ffffff);
   transition: border-color 180ms cubic-bezier(0.16, 1, 0.3, 1),
               box-shadow 180ms cubic-bezier(0.16, 1, 0.3, 1),
               transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -61,12 +87,265 @@
 .lt-neon-card:hover {
   border-color: rgba(56, 189, 248, 0.65);
   box-shadow:
-    0 8px 32px -6px rgba(0, 82, 255, 0.65),
+    0 8px 32px -6px rgba(0, 82, 255, 0.6),
     inset 0 1px 0 rgba(125, 211, 252, 0.4);
 }
 
 .lt-sidebar-gradient {
   background: linear-gradient(180deg, #050e28 0%, #071436 48%, #0a1c4c 100%);
+}
+
+/* ============================================================================
+   UNIFIED HIGH-CONTRAST DEEP NAVY THEME SYSTEM
+   Guarantees crisp readability across all customer, public & admin screens
+   and ensures the Super-Admin font color setting applies globally.
+   ============================================================================ */
+
+/* Global dynamic font color for standard text elements */
+body,
+h1, h2, h3, h4, h5, h6,
+p, label, li, td, th, dt, dd {
+  color: var(--app-font-color, #ffffff);
+}
+
+/* Convert legacy light card/panel backgrounds into rich elevated navy surfaces */
+.bg-white:not(.lt-logo-frame):not(.lt-btn-light) {
+  background-color: rgba(11, 29, 74, 0.95);
+  color: var(--app-font-color, #ffffff);
+}
+
+.bg-white\/95:not(.lt-logo-frame):not(.lt-btn-light),
+.bg-white\/90:not(.lt-logo-frame):not(.lt-btn-light),
+.bg-white\/80:not(.lt-logo-frame):not(.lt-btn-light) {
+  background-color: rgba(7, 20, 54, 0.96);
+  color: var(--app-font-color, #ffffff);
+}
+
+.bg-slate-50,
+.bg-slate-50\/80,
+.bg-slate-50\/70,
+.bg-slate-50\/50 {
+  background-color: #071436;
+  color: var(--app-font-color, #ffffff);
+}
+
+.bg-slate-100,
+.bg-slate-200,
+.bg-slate-200\/75,
+.bg-slate-200\/70,
+.bg-slate-200\/60 {
+  background-color: rgba(19, 44, 107, 0.85);
+  color: var(--app-font-color, #ffffff);
+}
+
+/* Hover states on dark navy surfaces — never flash bright white */
+.hover\:bg-slate-50:hover,
+.hover\:bg-slate-50\/80:hover,
+.hover\:bg-slate-100:hover,
+.hover\:bg-blue-50:hover,
+.hover\:bg-blue-50\/40:hover {
+  background-color: rgba(29, 78, 216, 0.28);
+}
+
+.hover\:bg-blue-100:hover {
+  background-color: rgba(37, 99, 235, 0.36);
+}
+
+.hover\:bg-emerald-50:hover {
+  background-color: rgba(16, 185, 129, 0.24);
+}
+
+.hover\:bg-amber-50:hover {
+  background-color: rgba(245, 158, 11, 0.24);
+}
+
+.hover\:bg-rose-50:hover,
+.hover\:bg-rose-100:hover {
+  background-color: rgba(244, 63, 94, 0.26);
+}
+
+/* Semantic surface tints tuned for crisp dark-mode contrast */
+.bg-blue-50,
+.bg-blue-50\/80,
+.bg-blue-50\/70,
+.bg-blue-50\/40,
+.bg-blue-100,
+.bg-indigo-50,
+.bg-cyan-50 {
+  background-color: rgba(37, 99, 235, 0.22);
+}
+
+.bg-emerald-50,
+.bg-emerald-100,
+.bg-teal-50 {
+  background-color: rgba(16, 185, 129, 0.18);
+}
+
+.bg-amber-50,
+.bg-amber-100 {
+  background-color: rgba(245, 158, 11, 0.2);
+}
+
+.bg-rose-50,
+.bg-rose-50\/50,
+.bg-rose-50\/40,
+.bg-rose-100 {
+  background-color: rgba(244, 63, 94, 0.2);
+}
+
+.bg-purple-50 {
+  background-color: rgba(168, 85, 247, 0.2);
+}
+
+/* Luminous dark-mode borders & dividers */
+.border-slate-100,
+.border-slate-200,
+.border-slate-200\/90,
+.border-slate-200\/80,
+.border-slate-200\/60 {
+  border-color: rgba(125, 211, 252, 0.22);
+}
+
+.border-slate-300 {
+  border-color: rgba(125, 211, 252, 0.36);
+}
+
+.divide-slate-100 > :not(:last-child),
+.divide-slate-200 > :not(:last-child) {
+  border-color: rgba(125, 211, 252, 0.16);
+}
+
+.border-blue-100,
+.border-blue-200,
+.border-blue-300 {
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+.border-emerald-200,
+.border-emerald-200\/60 {
+  border-color: rgba(52, 211, 153, 0.42);
+}
+
+.border-amber-200,
+.border-amber-200\/60,
+.border-amber-300 {
+  border-color: rgba(251, 191, 36, 0.45);
+}
+
+.border-rose-200,
+.border-rose-300 {
+  border-color: rgba(251, 113, 133, 0.45);
+}
+
+/* Typography contrast mapping — zero dim ash grey or dark-on-dark text */
+.text-slate-900,
+.text-slate-800,
+.text-slate-700,
+.text-gray-900,
+.text-gray-800,
+.text-gray-700 {
+  color: var(--app-font-color, #ffffff);
+}
+
+.text-slate-600,
+.text-slate-500,
+.text-slate-400,
+.text-slate-300,
+.text-gray-600,
+.text-gray-500,
+.text-gray-400 {
+  color: var(--app-font-secondary, rgba(255, 255, 255, 0.9));
+}
+
+.text-blue-950,
+.text-blue-900,
+.text-blue-800,
+.text-blue-700,
+.text-blue-600,
+.text-indigo-700 {
+  color: #7dd3fc;
+}
+
+.hover\:text-blue-700:hover,
+.hover\:text-slate-900:hover,
+.hover\:text-slate-700:hover {
+  color: #bae6fd;
+}
+
+.text-emerald-950,
+.text-emerald-900,
+.text-emerald-800,
+.text-emerald-700,
+.text-emerald-600 {
+  color: #6ee7b7;
+}
+
+.text-amber-950,
+.text-amber-900,
+.text-amber-800,
+.text-amber-700,
+.text-amber-600 {
+  color: #fcd34d;
+}
+
+.text-rose-950,
+.text-rose-900,
+.text-rose-800,
+.text-rose-700,
+.text-rose-600 {
+  color: #fda4af;
+}
+
+/* Disabled button clarity on dark surfaces */
+button:disabled.disabled\:bg-slate-200 {
+  background-color: rgba(30, 58, 138, 0.45);
+  color: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(125, 211, 252, 0.25);
+}
+
+/* Explicit high-contrast opt-outs for white logo frames & white hero CTA buttons */
+.lt-logo-frame {
+  background-color: #ffffff !important;
+}
+
+.lt-btn-light {
+  background-color: #ffffff !important;
+  color: #071436 !important;
+}
+
+.lt-btn-light:hover {
+  background-color: #e0f2fe !important;
+}
+
+.lt-btn-light svg,
+.lt-btn-light span {
+  color: #071436 !important;
+}
+
+/* Form inputs & selects crisp styling across all dark cards & modals */
+input:not([type='checkbox']):not([type='radio']):not([type='color']):not([type='range']).bg-white,
+textarea.bg-white,
+select.bg-white {
+  background-color: #071436;
+  color: var(--app-font-color, #ffffff);
+  border-color: rgba(56, 189, 248, 0.38);
+}
+
+/* Recharts crisp dark-navy readability */
+.recharts-cartesian-axis-tick-value {
+  fill: var(--app-font-color, #ffffff) !important;
+}
+
+.recharts-default-tooltip {
+  background-color: #071436 !important;
+  border: 1px solid rgba(56, 189, 248, 0.45) !important;
+  border-radius: 10px !important;
+  color: #ffffff !important;
+}
+
+.recharts-tooltip-label,
+.recharts-tooltip-item {
+  color: #ffffff !important;
 }
 
 /* Custom subtle scrollbars for dense data tables */
@@ -80,10 +359,10 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(56, 189, 248, 0.3);
+  background: rgba(56, 189, 248, 0.35);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(56, 189, 248, 0.6);
+  background: rgba(56, 189, 248, 0.65);
 }

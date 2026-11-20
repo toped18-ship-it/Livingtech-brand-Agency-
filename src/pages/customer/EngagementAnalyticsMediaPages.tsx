@@ -219,12 +219,12 @@ export const AnalyticsPage: React.FC = () => {
             <div className="mt-4 h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={snapshots}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
-                  <XAxis dataKey="snapshotDate" tick={{ fontSize: 12, fill: '#64748B' }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 12, fill: '#64748B' }} axisLine={false} tickLine={false} />
-                  <Tooltip />
-                  <Bar dataKey="impressions" name="Impressions" fill="#0052FF" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="engagements" name="Engagements" fill="#0EA5E9" radius={[4, 4, 0, 0]} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.18)" vertical={false} />
+                  <XAxis dataKey="snapshotDate" tick={{ fontSize: 12, fill: '#E2E8F0' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 12, fill: '#E2E8F0' }} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={{ backgroundColor: '#071436', border: '1px solid rgba(56,189,248,0.45)', borderRadius: '10px', color: '#FFFFFF' }} />
+                  <Bar dataKey="impressions" name="Impressions" fill="#38BDF8" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="engagements" name="Engagements" fill="#F59E0B" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -235,12 +235,12 @@ export const AnalyticsPage: React.FC = () => {
             <div className="mt-4 h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={snapshots}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
-                  <XAxis dataKey="snapshotDate" tick={{ fontSize: 12, fill: '#64748B' }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 12, fill: '#64748B' }} axisLine={false} tickLine={false} />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="followersTotal" name="Followers" stroke="#071436" strokeWidth={2.2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="clicks" name="Clicks" stroke="#F59E0B" strokeWidth={2.2} dot={{ r: 3 }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.18)" vertical={false} />
+                  <XAxis dataKey="snapshotDate" tick={{ fontSize: 12, fill: '#E2E8F0' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 12, fill: '#E2E8F0' }} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={{ backgroundColor: '#071436', border: '1px solid rgba(56,189,248,0.45)', borderRadius: '10px', color: '#FFFFFF' }} />
+                  <Line type="monotone" dataKey="followersTotal" name="Followers" stroke="#38BDF8" strokeWidth={2.4} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="clicks" name="Clicks" stroke="#F59E0B" strokeWidth={2.4} dot={{ r: 3 }} />
                 </LineChart>
               </ResponsiveContainer>
             </div>

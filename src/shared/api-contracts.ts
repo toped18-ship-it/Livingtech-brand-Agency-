@@ -11,7 +11,7 @@ export type PlatformKey =
   | 'google_business';
 export type PostStatus = 'draft' | 'pending' | 'scheduled' | 'published' | 'failed';
 export type JobStatus = 'queued' | 'processing' | 'succeeded' | 'failed' | 'cancelled';
-export type PlanCode = 'starter' | 'growth' | 'agency' | 'enterprise';
+export type PlanCode = 'basic' | 'pro' | 'enterprise' | 'starter' | 'growth' | 'agency';
 export type TicketPriority = 'low' | 'medium' | 'high' | 'urgent';
 export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
 

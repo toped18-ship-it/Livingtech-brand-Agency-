@@ -11,6 +11,7 @@ import {
   Building2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useSystemSettings } from '../context/SystemSettingsContext';
 import { apiClient } from '../lib/apiClient';
 import { formatCurrencyCents, validatePasswordStrength } from '../utils/domain';
 import type { SubscriptionPlanRecord } from '../shared/api-contracts';
@@ -33,6 +34,7 @@ interface PublicPortalProps {
 
 export const PublicPortal: React.FC<PublicPortalProps> = ({ page, onNavigate }) => {
   const { login, register, loginWithGoogle } = useAuth();
+  const { settings } = useSystemSettings();
 
   // Auth form states
   const [email, setEmail] = useState('');
@@ -190,7 +192,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ page, onNavigate }) 
     page === 'recovery';
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
+    <div className="min-h-screen flex flex-col bg-[#050e28] text-white">
       {/* Strict 3-Zone Top Navigation Bar */}
       <header className="sticky top-0 z-30 border-b border-slate-200/90 bg-white/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-8 px-4 sm:px-6">
@@ -199,10 +201,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ page, onNavigate }) 
             onClick={() => onNavigate('login')}
             className="flex items-center gap-2.5 text-left whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 rounded"
           >
-            <div className="h-10 w-44 overflow-hidden rounded-md bg-white flex items-center justify-center px-1">
+            <div className="lt-logo-frame h-10 w-44 overflow-hidden rounded-md bg-white flex items-center justify-center px-1">
               <img
-                src="/assets/aistudio/20261112_184805_8a13799e.jpg"
-                alt="LIVINGTECH BRAND AGENCY"
+                src={settings.app_logo_url || '/assets/aistudio/20261112_184805_8a13799e.jpg'}
+                alt={settings.app_name || 'LIVINGTECH BRAND AGENCY'}
                 referrerPolicy="no-referrer"
                 className="h-full w-full object-contain scale-[1.22]"
               />
@@ -267,19 +269,19 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ page, onNavigate }) 
             {/* Left Executive Brand Panel */}
             <div className="lt-neon-hero flex flex-col justify-between rounded-2xl p-7 text-white lg:col-span-5 lg:p-9">
               <div>
-                <div className="inline-flex h-16 w-60 items-center justify-center overflow-hidden rounded-xl bg-white px-2 shadow-sm">
+                <div className="lt-logo-frame inline-flex h-16 w-60 items-center justify-center overflow-hidden rounded-xl bg-white px-2 shadow-sm">
                   <img
-                    src="/assets/aistudio/20261112_184805_8a13799e.jpg"
-                    alt="LIVINGTECH BRAND AGENCY official brand mark"
+                    src={settings.app_logo_url || '/assets/aistudio/20261112_184805_8a13799e.jpg'}
+                    alt={`${settings.app_name || 'LIVINGTECH BRAND AGENCY'} official brand mark`}
                     referrerPolicy="no-referrer"
                     className="h-full w-full object-contain scale-[1.22]"
                   />
                 </div>
                 <h1 className="mt-7 font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                  Enterprise Social Media & Brand Operations Suite
+                  {settings.app_name || 'LIVINGTECH BRAND AGENCY'}
                 </h1>
                 <p className="mt-3 text-sm leading-relaxed text-blue-100/90">
-                  Manage multi-tenant client workspaces, generate brand-aligned campaigns in AI Content Studio, schedule publishing pipelines, and govern team access from one unified platform.
+                  {settings.app_tagline || 'Manage multi-tenant client workspaces, generate brand-aligned campaigns in AI Content Studio, schedule publishing pipelines, and govern team access from one unified platform.'}
                 </p>
 
                 <div className="mt-8 space-y-4 border-t border-white/15 pt-6 text-sm text-blue-50">
@@ -337,7 +339,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ page, onNavigate }) 
                 <div>
                   <h2 className="font-display text-2xl font-bold text-slate-900">Sign in to your workspace</h2>
                   <p className="mt-1.5 text-sm text-slate-600">
-                    Access your LIVINGTECH BRAND AGENCY customer dashboard or authorized super-admin console.
+                    Access your {settings.app_name || 'LIVINGTECH BRAND AGENCY'} customer dashboard or authorized super-admin console.
                   </p>
 
                   <form onSubmit={handleLogin} className="mt-6 space-y-4">
@@ -766,10 +768,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ page, onNavigate }) 
               </div>
             </div>
 
-            <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-3">
               {plans.map((plan) => {
                 const price = billingCycle === 'monthly' ? plan.monthlyPriceCents : Math.round(plan.annualPriceCents / 12);
-                const isFeatured = plan.code === 'agency';
+                const isFeatured = plan.code === 'pro' || plan.code === 'agency';
                 return (
                   <div
                     key={plan.id}
@@ -822,7 +824,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ page, onNavigate }) 
                       onClick={() => onNavigate('register')}
                       className={`mt-6 w-full rounded-lg px-4 py-2.5 text-xs font-semibold transition-colors ${
                         isFeatured
-                          ? 'bg-white text-blue-950 hover:bg-blue-50'
+                          ? 'lt-btn-light bg-white text-blue-950 hover:bg-blue-50'
                           : 'bg-blue-700 text-white hover:bg-blue-800'
                       }`}
                     >
@@ -893,7 +895,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ page, onNavigate }) 
       {/* Quiet Enterprise Footer */}
       <footer className="border-t border-slate-200 bg-white">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-4 py-4 text-xs text-slate-500 sm:flex-row sm:px-6">
-          <span>© {new Date().getFullYear()} LIVINGTECH BRAND AGENCY. Building Brands, Creating Possibilities.</span>
+          <span>{settings.app_footer_text || `© ${new Date().getFullYear()} LIVINGTECH BRAND AGENCY. Building Brands, Creating Possibilities.`}</span>
           <div className="flex flex-wrap items-center gap-4">
             <button type="button" onClick={() => onNavigate('pricing')} className="hover:text-blue-700">Pricing</button>
             <button type="button" onClick={() => onNavigate('privacy')} className="hover:text-blue-700">Privacy Policy</button>

@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { SystemSettingsProvider, useSystemSettings } from './context/SystemSettingsContext';
 import { AppErrorBoundary, OfflineIndicator } from './components/PWAControls';
 import { PublicPortal, type PublicPage } from './components/PublicPortal';
 import { AppShell } from './components/AppShell';
 import { SuperAdminConsole, type AdminSection } from './pages/admin/SuperAdminConsole';
 import type { CustomerRoute } from './pages/customer/types';
+import { hasSuperAdminAccess } from './utils/domain';
 
 type AppRouteState =
   | { area: 'public'; page: PublicPage }
@@ -88,6 +90,7 @@ function toPathname(state: AppRouteState): string {
 
 const RouterView: React.FC = () => {
   const { user, loading } = useAuth();
+  const { settings } = useSystemSettings();
   const [routeState, setRouteState] = useState<AppRouteState>(() =>
     parsePathname(window.location.pathname)
   );
@@ -144,20 +147,26 @@ const RouterView: React.FC = () => {
       routeState.area === 'public' &&
       (routeState.page === 'login' || routeState.page === 'register')
     ) {
-      navigate({ area: 'customer', page: 'overview' }, true);
+      if (hasSuperAdminAccess(user.role)) {
+        navigate({ area: 'admin', page: 'overview' }, true);
+      } else {
+        navigate({ area: 'customer', page: 'overview' }, true);
+      }
     }
   }, [loading, user, routeState, navigate]);
 
   if (loading) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 p-6">
-        <img
-          src="/assets/aistudio/20261112_184805_8a13799e.jpg"
-          alt="LIVINGTECH BRAND AGENCY"
-          referrerPolicy="no-referrer"
-          className="h-12 w-auto object-contain"
-        />
-        <p className="mt-4 text-xs font-medium text-slate-500">
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[#050e28] p-6">
+        <div className="lt-logo-frame flex h-14 w-52 items-center justify-center overflow-hidden rounded-xl px-2 shadow-lg">
+          <img
+            src={settings.app_logo_url || '/assets/aistudio/20261112_184805_8a13799e.jpg'}
+            alt={settings.app_name || 'LIVINGTECH BRAND AGENCY'}
+            referrerPolicy="no-referrer"
+            className="h-full w-full object-contain scale-[1.18]"
+          />
+        </div>
+        <p className="mt-4 text-xs font-semibold text-white/90">
           Initializing secure multi-tenant workspace...
         </p>
       </div>
@@ -170,6 +179,16 @@ const RouterView: React.FC = () => {
       <PublicPortal
         page={publicPage}
         onNavigate={(page) => navigate({ area: 'public', page })}
+      />
+    );
+  }
+
+  if (user && hasSuperAdminAccess(user.role) && routeState.area === 'public' && routeState.page === 'login') {
+    return (
+      <SuperAdminConsole
+        section="overview"
+        onNavigateSection={(section) => navigate({ area: 'admin', page: section })}
+        onReturnCustomerApp={() => navigate({ area: 'customer', page: 'overview' })}
       />
     );
   }
@@ -223,8 +242,10 @@ export default function App() {
   return (
     <AppErrorBoundary>
       <AuthProvider>
-        <RouterView />
-        <OfflineIndicator />
+        <SystemSettingsProvider>
+          <RouterView />
+          <OfflineIndicator />
+        </SystemSettingsProvider>
       </AuthProvider>
     </AppErrorBoundary>
   );

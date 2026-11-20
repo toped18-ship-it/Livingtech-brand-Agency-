@@ -24,7 +24,9 @@ export function verifyPassword(password: string, storedHash: string): boolean {
 }
 
 export function initDatabase(dbPath?: string): DbInstance {
-  const targetPath = dbPath ?? path.resolve(process.cwd(), 'data', 'livingtech.db');
+  const isServerless = process.env.VERCEL === '1' || process.env.AWS_LAMBDA_FUNCTION_VERSION !== undefined;
+  const defaultPath = isServerless ? '/tmp/livingtech.db' : path.resolve(process.cwd(), 'data', 'livingtech.db');
+  const targetPath = dbPath ?? defaultPath;
   if (targetPath !== ':memory:') {
     fs.mkdirSync(path.dirname(targetPath), { recursive: true });
   }
@@ -1011,6 +1013,39 @@ function seedReferenceData(db: DbInstance) {
     ],
   ] as const;
 
+  // Ensure existing databases with legacy CHECK(code IN ('starter','growth','agency','enterprise'))
+  // are safely migrated to allow 'basic' and 'pro' without losing user data.
+  const planTableMeta = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'subscription_plans'")
+    .get() as { sql: string } | undefined;
+  if (planTableMeta && !planTableMeta.sql.includes("'basic'")) {
+    db.pragma('foreign_keys = OFF');
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE subscription_plans_v2 (
+          id TEXT PRIMARY KEY,
+          code TEXT NOT NULL UNIQUE CHECK(code IN ('basic','pro','enterprise','starter','growth','agency')),
+          name TEXT NOT NULL,
+          tagline TEXT NOT NULL,
+          monthly_price_cents INTEGER NOT NULL,
+          annual_price_cents INTEGER NOT NULL,
+          max_workspaces INTEGER NOT NULL,
+          max_social_accounts INTEGER NOT NULL,
+          max_team_members INTEGER NOT NULL,
+          monthly_ai_credits INTEGER NOT NULL,
+          features_json TEXT NOT NULL DEFAULT '[]',
+          is_active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        INSERT INTO subscription_plans_v2 SELECT * FROM subscription_plans;
+        DROP TABLE subscription_plans;
+        ALTER TABLE subscription_plans_v2 RENAME TO subscription_plans;
+      `);
+    })();
+    db.pragma('foreign_keys = ON');
+  }
+
   const insertPlan = db.prepare(`
     INSERT OR IGNORE INTO subscription_plans (
       id, code, name, tagline, monthly_price_cents, annual_price_cents,
@@ -1036,6 +1071,27 @@ function seedReferenceData(db: DbInstance) {
     );
   }
 
+  // Migrate any existing subscriptions referencing legacy starter/growth/agency codes to basic/pro
+  const basicPlanRow = db.prepare("SELECT id FROM subscription_plans WHERE code = 'basic'").get() as { id: string } | undefined;
+  const proPlanRow = db.prepare("SELECT id FROM subscription_plans WHERE code = 'pro'").get() as { id: string } | undefined;
+  if (basicPlanRow && proPlanRow) {
+    db.prepare(`
+      UPDATE subscriptions
+      SET plan_id = ?, updated_at = ?
+      WHERE plan_id IN (SELECT id FROM subscription_plans WHERE code = 'starter')
+    `).run(basicPlanRow.id, now);
+    db.prepare(`
+      UPDATE subscriptions
+      SET plan_id = ?, updated_at = ?
+      WHERE plan_id IN (SELECT id FROM subscription_plans WHERE code IN ('growth', 'agency'))
+    `).run(proPlanRow.id, now);
+    db.prepare(`
+      UPDATE subscription_plans
+      SET is_active = 0, updated_at = ?
+      WHERE code IN ('starter', 'growth', 'agency') AND is_active = 1
+    `).run(now);
+  }
+
   // 4. System Settings
   const settings = [
     ['allow_new_registrations', 'true', 'Allow self-service customer registrations via email and OAuth'],
@@ -1043,6 +1099,12 @@ function seedReferenceData(db: DbInstance) {
     ['default_trial_ai_credits', '250', 'Initial AI credits allocated to each newly provisioned workspace'],
     ['max_publishing_retries', '3', 'Automatic retry threshold before marking a publishing job as failed'],
     ['maintenance_mode', 'false', 'Temporarily restrict non-admin write operations during maintenance'],
+    ['app_name', 'LIVINGTECH BRAND AGENCY', 'Global application name displayed in headers and titles'],
+    ['app_tagline', 'Enterprise Multi-Tenant Social Media & Brand Management SaaS', 'Global application subtitle / tagline'],
+    ['app_logo_url', '/assets/aistudio/20261112_184805_8a13799e.jpg', 'Global application logo image URL'],
+    ['app_footer_text', '© 2026 LIVINGTECH BRAND AGENCY. All rights reserved.', 'Global footer copyright text'],
+    ['app_welcome_message', 'Welcome back to your enterprise command center.', 'Welcome message on dashboard'],
+    ['app_font_color', '#ffffff', 'Global application font color (default pure white)'],
   ];
   const insertSetting = db.prepare(`
     INSERT OR IGNORE INTO system_settings (key, value, description, updated_at)

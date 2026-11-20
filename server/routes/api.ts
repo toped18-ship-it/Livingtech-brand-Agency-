@@ -147,6 +147,19 @@ export function createApiRouter(db: DbInstance): Router {
     res.json({ status: 'ok', service: 'livingtech-brand-agency-api', timestamp: new Date().toISOString() });
   });
 
+  router.get('/settings', (_req, res) => {
+    try {
+      const rows = db.prepare('SELECT key, value FROM system_settings').all() as { key: string; value: string }[];
+      const map: Record<string, string> = {};
+      for (const r of rows) {
+        map[r.key] = r.value;
+      }
+      res.json(map);
+    } catch (err) {
+      handleRouteError(res, err);
+    }
+  });
+
   router.get('/plans', (_req, res) => {
     const rows = db.prepare('SELECT * FROM subscription_plans WHERE is_active = 1 ORDER BY monthly_price_cents ASC').all() as Record<string, unknown>[];
     res.json(
@@ -1637,12 +1650,13 @@ export function createApiRouter(db: DbInstance): Router {
       const subId = String(req.params.subId);
       const payload = z.object({
         status: z.enum(['trialing', 'active', 'past_due', 'cancelled']).optional(),
-        planCode: z.enum(['starter', 'growth', 'agency', 'enterprise']).optional(),
+        planCode: z.enum(['basic', 'pro', 'enterprise', 'starter', 'growth', 'agency']).optional(),
       }).parse(req.body);
 
       const now = new Date().toISOString();
       if (payload.planCode) {
-        const plan = db.prepare('SELECT id FROM subscription_plans WHERE code = ?').get(payload.planCode) as { id: string };
+        const plan = db.prepare('SELECT id FROM subscription_plans WHERE code = ?').get(payload.planCode) as { id: string } | undefined;
+        if (!plan) return res.status(404).json({ error: `Subscription plan "${payload.planCode}" not found.` });
         db.prepare('UPDATE subscriptions SET plan_id = ?, updated_at = ? WHERE id = ?').run(plan.id, now, subId);
       }
       if (payload.status) {
@@ -1872,10 +1886,29 @@ export function createApiRouter(db: DbInstance): Router {
 
   router.patch('/admin/settings', (req: AuthedRequest, res) => {
     try {
-      const { key, value } = z.object({ key: z.string().min(1).max(80), value: z.string().max(256) }).parse(req.body);
+      const { key, value } = z.object({ key: z.string().min(1).max(80), value: z.string().max(2000) }).parse(req.body);
       const now = new Date().toISOString();
       const updated = db.prepare('UPDATE system_settings SET value = ?, updated_at = ? WHERE key = ?').run(value, now, key);
-      if (updated.changes === 0) return res.status(404).json({ error: 'Setting key not found.' });
+      if (updated.changes === 0) {
+        const defaultDescriptions: Record<string, string> = {
+          app_name: 'Global application name displayed in headers and titles',
+          app_tagline: 'Global application subtitle / tagline',
+          app_logo_url: 'Global application logo image URL',
+          app_footer_text: 'Global footer copyright text',
+          app_welcome_message: 'Welcome message on dashboard',
+          app_font_color: 'Global application font color (default pure white)',
+        };
+        if (key in defaultDescriptions) {
+          db.prepare('INSERT INTO system_settings (key, value, description, updated_at) VALUES (?, ?, ?, ?)').run(
+            key,
+            value,
+            defaultDescriptions[key],
+            now
+          );
+        } else {
+          return res.status(404).json({ error: 'Setting key not found.' });
+        }
+      }
       recordAuditLog(db, {
         actorUserId: req.user!.id,
         actorEmail: req.user!.email,

@@ -174,7 +174,7 @@ export const BillingSubscriptionsPage: React.FC = () => {
       {/* Pricing Plans Grid */}
       <div>
         <h2 className="font-display text-base font-bold text-slate-900 mb-4">Available Workspace Plans</h2>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           {plans.map((p) => {
             const isCurrent = sub?.planCode === p.code;
             const displayPrice = cycle === 'monthly' ? p.monthlyPriceCents : Math.round(p.annualPriceCents / 12);
@@ -257,7 +257,7 @@ export const BillingSubscriptionsPage: React.FC = () => {
                 <p className="text-[11px] text-slate-500">Paid on {new Date().toLocaleDateString()}</p>
               </div>
               <div className="flex items-center gap-3">
-                <span className="font-mono-tabular font-bold text-slate-900">$49.00</span>
+                <span className="font-mono-tabular font-bold text-slate-900">{formatCurrencyCents(sub?.monthlyPriceCents || 7900)}</span>
                 <button
                   type="button"
                   onClick={() => setNotice('Invoice PDF downloaded successfully.')}
@@ -274,7 +274,7 @@ export const BillingSubscriptionsPage: React.FC = () => {
                 <p className="text-[11px] text-slate-500">Paid on last month</p>
               </div>
               <div className="flex items-center gap-3">
-                <span className="font-mono-tabular font-bold text-slate-900">$49.00</span>
+                <span className="font-mono-tabular font-bold text-slate-900">{formatCurrencyCents(sub?.monthlyPriceCents || 7900)}</span>
                 <button
                   type="button"
                   onClick={() => setNotice('Invoice PDF downloaded successfully.')}

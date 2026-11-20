@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../../lib/apiClient';
 import { useAuth } from '../../context/AuthContext';
+import { useSystemSettings } from '../../context/SystemSettingsContext';
 import type { CustomerDashboardData } from '../../shared/api-contracts';
 import type { CustomerRoute } from './types';
 
@@ -33,6 +34,7 @@ interface OverviewDashboardProps {
 
 export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ onNavigate }) => {
   const { activeWorkspace } = useAuth();
+  const { settings } = useSystemSettings();
   const [data, setData] = useState<CustomerDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -92,7 +94,7 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ onNavigate
               Brand Command Overview
             </h1>
             <p className="mt-1.5 max-w-2xl text-sm text-blue-100/90">
-              Real-time database snapshot of your connected channels, publishing pipeline, AI Studio credits, and upcoming campaign schedule.
+              {settings.app_welcome_message || 'Real-time database snapshot of your connected channels, publishing pipeline, AI Studio credits, and upcoming campaign schedule.'}
             </p>
           </div>
 
@@ -100,7 +102,7 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ onNavigate
             <button
               type="button"
               onClick={() => onNavigate('ai-studio')}
-              className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-xs font-semibold text-blue-950 hover:bg-blue-50 transition-colors whitespace-nowrap shrink-0"
+              className="lt-btn-light inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-xs font-semibold text-blue-950 hover:bg-blue-50 transition-colors whitespace-nowrap shrink-0"
             >
               <Sparkles className="h-3.5 w-3.5 text-blue-700" />
               New AI Post
@@ -197,33 +199,52 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ onNavigate
           </div>
 
           <div className="mt-5 h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data.performancePreview} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="ltImpGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0052FF" stopOpacity={0.28} />
-                    <stop offset="95%" stopColor="#0052FF" stopOpacity={0.02} />
-                  </linearGradient>
-                  <linearGradient id="ltEngGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0EA5E9" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#0EA5E9" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
-                <XAxis dataKey="snapshotDate" tick={{ fontSize: 12, fill: '#64748B' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fill: '#64748B' }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{
-                    borderRadius: '10px',
-                    border: '1px solid #E2E8F0',
-                    boxShadow: '0 8px 24px -8px rgba(7,20,54,0.12)',
-                    fontSize: '12px',
-                  }}
-                />
-                <Area type="monotone" dataKey="impressions" name="Impressions" stroke="#0052FF" strokeWidth={2.2} fill="url(#ltImpGrad)" />
-                <Area type="monotone" dataKey="engagements" name="Engagements" stroke="#0EA5E9" strokeWidth={2} fill="url(#ltEngGrad)" />
-              </AreaChart>
-            </ResponsiveContainer>
+            {data.performancePreview.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center rounded-xl border border-sky-400/20 bg-[#071436]/60 p-6 text-center">
+                <BarChart3 className="h-8 w-8 text-sky-300" />
+                <p className="mt-3 text-sm font-bold text-white">No live performance snapshots yet</p>
+                <p className="mt-1 max-w-sm text-xs text-white/85">
+                  Connect an official social channel to stream daily impressions, engagements, and click attribution here.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => onNavigate('social-accounts')}
+                  className="mt-4 rounded-lg bg-blue-700 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-600 transition-colors"
+                >
+                  Connect Social Accounts
+                </button>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={data.performancePreview} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="ltImpGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#0052FF" stopOpacity={0.28} />
+                      <stop offset="95%" stopColor="#0052FF" stopOpacity={0.02} />
+                    </linearGradient>
+                    <linearGradient id="ltEngGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#0EA5E9" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="#0EA5E9" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.18)" vertical={false} />
+                  <XAxis dataKey="snapshotDate" tick={{ fontSize: 12, fill: '#E2E8F0' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 12, fill: '#E2E8F0' }} axisLine={false} tickLine={false} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#071436',
+                      borderRadius: '10px',
+                      border: '1px solid rgba(56,189,248,0.45)',
+                      boxShadow: '0 8px 24px -8px rgba(0,0,0,0.45)',
+                      fontSize: '12px',
+                      color: '#FFFFFF',
+                    }}
+                  />
+                  <Area type="monotone" dataKey="impressions" name="Impressions" stroke="#38BDF8" strokeWidth={2.4} fill="url(#ltImpGrad)" />
+                  <Area type="monotone" dataKey="engagements" name="Engagements" stroke="#F59E0B" strokeWidth={2.2} fill="url(#ltEngGrad)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </section>
 
