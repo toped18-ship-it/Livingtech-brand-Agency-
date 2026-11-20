@@ -1,0 +1,18 @@
+export type CustomerRoute =
+  | 'overview'
+  | 'social-accounts'
+  | 'ai-studio'
+  | 'graphic-designer'
+  | 'calendar'
+  | 'auto-publisher'
+  | 'publishing-history'
+  | 'ai-strategy'
+  | 'engagement'
+  | 'analytics'
+  | 'media'
+  | 'notifications'
+  | 'billing'
+  | 'team'
+  | 'brand-settings'
+  | 'profile'
+  | 'support';

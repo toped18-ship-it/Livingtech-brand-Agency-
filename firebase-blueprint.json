@@ -1,0 +1,413 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private user account profile containing PII isolated strictly to the owner or super-admin.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email", "maxLength": 254 },
+        "fullName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "role": { "type": "string", "enum": ["customer", "workspace_admin", "super_admin"], "maxLength": 32 },
+        "emailVerified": { "type": "boolean" },
+        "timezone": { "type": "string", "maxLength": 64 },
+        "preferredLanguage": { "type": "string", "maxLength": 16 },
+        "status": { "type": "string", "enum": ["active", "suspended", "deleted"], "maxLength": 24 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "fullName", "role", "status", "createdAt", "updatedAt"]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Authorised super-administrator registry document.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email", "maxLength": 254 },
+        "grantedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "grantedAt"]
+    },
+    "Workspace": {
+      "title": "Workspace",
+      "description": "Multi-tenant customer workspace and brand configuration.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "brandName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "logoUrl": { "type": "string", "maxLength": 512 },
+        "primaryColor": { "type": "string", "maxLength": 16, "pattern": "^#[0-9a-fA-F]{6}$" },
+        "secondaryColor": { "type": "string", "maxLength": 16, "pattern": "^#[0-9a-fA-F]{6}$" },
+        "businessDescription": { "type": "string", "maxLength": 2000 },
+        "industry": { "type": "string", "maxLength": 100 },
+        "targetAudience": { "type": "string", "maxLength": 500 },
+        "preferredLanguage": { "type": "string", "maxLength": 16 },
+        "timezone": { "type": "string", "maxLength": 64 },
+        "aiCreditsRemaining": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "ownerId", "name", "brandName", "createdAt", "updatedAt"]
+    },
+    "WorkspaceMember": {
+      "title": "WorkspaceMember",
+      "description": "Team member invited into a tenant workspace.",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "memberEmail": { "type": "string", "format": "email", "maxLength": 254 },
+        "memberRole": { "type": "string", "enum": ["owner", "admin", "editor", "viewer"], "maxLength": 24 },
+        "status": { "type": "string", "enum": ["active", "invited", "revoked"], "maxLength": 24 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "ownerId", "memberEmail", "memberRole", "status", "createdAt", "updatedAt"]
+    },
+    "ContentPost": {
+      "title": "ContentPost",
+      "description": "Social media content post scoped to a single workspace.",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "body": { "type": "string", "minLength": 1, "maxLength": 5000 },
+        "platform": { "type": "string", "enum": ["instagram", "facebook", "linkedin", "x", "tiktok", "youtube", "pinterest", "google_business"], "maxLength": 32 },
+        "status": { "type": "string", "enum": ["draft", "pending", "scheduled", "published", "failed"], "maxLength": 24 },
+        "scheduledAt": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "ownerId", "title", "body", "platform", "status", "createdAt", "updatedAt"]
+    },
+    "MediaAsset": {
+      "title": "MediaAsset",
+      "description": "Metadata reference for a workspace media library item.",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "assetType": { "type": "string", "enum": ["image", "video", "document", "template"], "maxLength": 24 },
+        "url": { "type": "string", "maxLength": 1024 },
+        "sizeBytes": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "ownerId", "name", "assetType", "url", "createdAt"]
+    },
+    "NotificationItem": {
+      "title": "NotificationItem",
+      "description": "User or workspace notification event.",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "ownerId", "title", "message", "isRead", "createdAt"]
+    },
+    "SupportTicket": {
+      "title": "SupportTicket",
+      "description": "Customer support request managed by customer and super-admin.",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "subject": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 3000 },
+        "priority": { "type": "string", "enum": ["low", "medium", "high", "urgent"], "maxLength": 24 },
+        "status": { "type": "string", "enum": ["open", "in_progress", "resolved", "closed"], "maxLength": 24 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "ownerId", "subject", "message", "priority", "status", "createdAt", "updatedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable security and operational audit record.",
+      "type": "object",
+      "properties": {
+        "actorId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "action": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "targetType": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "details": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["actorId", "action", "targetType", "createdAt"]
+    },
+    "AiBrandAnalysis": {
+      "title": "AiBrandAnalysis",
+      "description": "AI-generated brand intelligence analysis separating verified facts from assumptions.",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "brandSummary": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "modelName": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "ownerId", "brandSummary", "modelName", "createdAt"]
+    },
+    "AiContentStrategy": {
+      "title": "AiContentStrategy",
+      "description": "AI-generated multi-platform 30-day content strategy.",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "executiveSummary": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "modelName": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "ownerId", "title", "executiveSummary", "modelName", "createdAt"]
+    },
+    "ContentCampaign": {
+      "title": "ContentCampaign",
+      "description": "Workspace marketing campaign grouping posts and schedules.",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "objective": { "type": "string", "maxLength": 500 },
+        "status": { "type": "string", "enum": ["draft", "active", "paused", "completed", "archived"], "maxLength": 24 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "ownerId", "name", "status", "createdAt", "updatedAt"]
+    },
+    "ContentCalendarItem": {
+      "title": "ContentCalendarItem",
+      "description": "Scheduled calendar item with timezone and recurrence metadata.",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "platformKey": { "type": "string", "enum": ["instagram", "facebook", "linkedin", "x", "tiktok", "youtube", "pinterest", "google_business"], "maxLength": 32 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "scheduledAt": { "type": "string", "maxLength": 64 },
+        "timezone": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "enum": ["draft", "scheduled", "queued", "processing", "published", "failed", "cancelled", "awaiting_approval"], "maxLength": 32 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "ownerId", "platformKey", "title", "scheduledAt", "timezone", "status", "createdAt", "updatedAt"]
+    },
+    "GeneratedContent": {
+      "title": "GeneratedContent",
+      "description": "AI-generated social post, script, or repurposed content draft.",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "platformKey": { "type": "string", "enum": ["instagram", "facebook", "linkedin", "x", "tiktok", "youtube", "pinterest", "google_business"], "maxLength": 32 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "bodyText": { "type": "string", "minLength": 1, "maxLength": 6000 },
+        "safetyStatus": { "type": "string", "enum": ["passed", "flagged", "blocked"], "maxLength": 24 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "ownerId", "platformKey", "title", "bodyText", "safetyStatus", "createdAt", "updatedAt"]
+    },
+    "GeneratedImage": {
+      "title": "GeneratedImage",
+      "description": "AI graphic design blueprint and generated/composited visual asset record.",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "graphicType": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "aspectRatio": { "type": "string", "minLength": 1, "maxLength": 16 },
+        "prompt": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "status": { "type": "string", "enum": ["pending", "generated", "failed"], "maxLength": 24 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "ownerId", "graphicType", "aspectRatio", "prompt", "status", "createdAt"]
+    },
+    "PublishingQueueItem": {
+      "title": "PublishingQueueItem",
+      "description": "Durable background publishing queue job.",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "platformKey": { "type": "string", "enum": ["instagram", "facebook", "linkedin", "x", "tiktok", "youtube", "pinterest", "google_business"], "maxLength": 32 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "status": { "type": "string", "enum": ["draft", "scheduled", "queued", "processing", "published", "failed", "cancelled", "awaiting_approval"], "maxLength": 32 },
+        "publishingMode": { "type": "string", "enum": ["automatic", "approval_required"], "maxLength": 32 },
+        "scheduledAt": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "ownerId", "platformKey", "title", "status", "publishingMode", "scheduledAt", "createdAt", "updatedAt"]
+    },
+    "PublishingAttempt": {
+      "title": "PublishingAttempt",
+      "description": "Immutable attempt log recorded by the background publishing worker.",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "queueId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "attemptNumber": { "type": "integer" },
+        "status": { "type": "string", "enum": ["started", "succeeded", "retrying", "failed_permanent", "rate_limited", "token_expired"], "maxLength": 32 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "ownerId", "queueId", "attemptNumber", "status", "createdAt"]
+    },
+    "ContentApproval": {
+      "title": "ContentApproval",
+      "description": "Pre-publication approval decision record.",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "queueId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "decision": { "type": "string", "enum": ["pending", "approved", "rejected", "changes_requested"], "maxLength": 32 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "ownerId", "queueId", "decision", "createdAt", "updatedAt"]
+    },
+    "EngagementMessage": {
+      "title": "EngagementMessage",
+      "description": "Comment, mention, or message monitored for engagement management.",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "platformKey": { "type": "string", "enum": ["instagram", "facebook", "linkedin", "x", "tiktok", "youtube", "pinterest", "google_business"], "maxLength": 32 },
+        "content": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "status": { "type": "string", "enum": ["open", "escalated", "replied", "archived"], "maxLength": 24 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "ownerId", "platformKey", "content", "status", "createdAt", "updatedAt"]
+    },
+    "AiReplySuggestion": {
+      "title": "AiReplySuggestion",
+      "description": "AI-drafted engagement reply suggestion.",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "engagementMessageId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "suggestedReply": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "status": { "type": "string", "enum": ["suggested", "approved", "sent", "dismissed"], "maxLength": 24 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "ownerId", "engagementMessageId", "suggestedReply", "status", "createdAt"]
+    },
+    "AiGenerationUsage": {
+      "title": "AiGenerationUsage",
+      "description": "Immutable AI module token and credit consumption record.",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "moduleKey": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "modelName": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "creditsUsed": { "type": "integer" },
+        "status": { "type": "string", "enum": ["completed", "failed"], "maxLength": 24 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "ownerId", "moduleKey", "modelName", "creditsUsed", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private user account profiles with PII isolated to owner or super-admin."
+    },
+    "/admins/{adminUid}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Super-admin authorization directory."
+    },
+    "/workspaces/{workspaceId}": {
+      "schema": { "$ref": "#/entities/Workspace" },
+      "description": "Tenant workspaces with brand profile settings."
+    },
+    "/workspaces/{workspaceId}/members/{memberId}": {
+      "schema": { "$ref": "#/entities/WorkspaceMember" },
+      "description": "Workspace team member roster."
+    },
+    "/workspaces/{workspaceId}/posts/{postId}": {
+      "schema": { "$ref": "#/entities/ContentPost" },
+      "description": "Workspace social media posts."
+    },
+    "/workspaces/{workspaceId}/media/{mediaId}": {
+      "schema": { "$ref": "#/entities/MediaAsset" },
+      "description": "Workspace media asset references."
+    },
+    "/workspaces/{workspaceId}/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/NotificationItem" },
+      "description": "Workspace notifications."
+    },
+    "/workspaces/{workspaceId}/ai_brand_analyses/{analysisId}": {
+      "schema": { "$ref": "#/entities/AiBrandAnalysis" },
+      "description": "Workspace AI brand intelligence analyses."
+    },
+    "/workspaces/{workspaceId}/ai_content_strategies/{strategyId}": {
+      "schema": { "$ref": "#/entities/AiContentStrategy" },
+      "description": "Workspace AI content strategies."
+    },
+    "/workspaces/{workspaceId}/content_campaigns/{campaignId}": {
+      "schema": { "$ref": "#/entities/ContentCampaign" },
+      "description": "Workspace marketing campaigns."
+    },
+    "/workspaces/{workspaceId}/content_calendar/{calendarItemId}": {
+      "schema": { "$ref": "#/entities/ContentCalendarItem" },
+      "description": "Workspace interactive content calendar entries."
+    },
+    "/workspaces/{workspaceId}/generated_content/{contentId}": {
+      "schema": { "$ref": "#/entities/GeneratedContent" },
+      "description": "Workspace AI-generated posts, scripts, and repurposed drafts."
+    },
+    "/workspaces/{workspaceId}/generated_images/{imageId}": {
+      "schema": { "$ref": "#/entities/GeneratedImage" },
+      "description": "Workspace AI graphic designs and generated visual assets."
+    },
+    "/workspaces/{workspaceId}/publishing_queue/{queueId}": {
+      "schema": { "$ref": "#/entities/PublishingQueueItem" },
+      "description": "Workspace durable automatic publishing queue."
+    },
+    "/workspaces/{workspaceId}/publishing_attempts/{attemptId}": {
+      "schema": { "$ref": "#/entities/PublishingAttempt" },
+      "description": "Immutable background worker publishing attempt ledger."
+    },
+    "/workspaces/{workspaceId}/content_approvals/{approvalId}": {
+      "schema": { "$ref": "#/entities/ContentApproval" },
+      "description": "Workspace pre-publishing approval records."
+    },
+    "/workspaces/{workspaceId}/engagement_messages/{messageId}": {
+      "schema": { "$ref": "#/entities/EngagementMessage" },
+      "description": "Workspace monitored social comments and mentions."
+    },
+    "/workspaces/{workspaceId}/ai_reply_suggestions/{suggestionId}": {
+      "schema": { "$ref": "#/entities/AiReplySuggestion" },
+      "description": "Workspace AI-drafted reply suggestions."
+    },
+    "/workspaces/{workspaceId}/ai_generation_usage/{usageId}": {
+      "schema": { "$ref": "#/entities/AiGenerationUsage" },
+      "description": "Immutable AI generation credit and token usage records."
+    },
+    "/supportTickets/{ticketId}": {
+      "schema": { "$ref": "#/entities/SupportTicket" },
+      "description": "Support tickets visible only to owner and super-admins."
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Append-only security audit log."
+    }
+  }
+}

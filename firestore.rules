@@ -1,0 +1,824 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 0: Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Pillar 3: Hardened Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() &&
+        request.auth.token.email == 'livingstoneedu64@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isWorkspaceOwner(workspaceId) {
+      return isVerifiedUser() &&
+        exists(/databases/$(database)/documents/workspaces/$(workspaceId)) &&
+        get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid;
+    }
+
+    function isValidPlatformKey(platform) {
+      return platform in ['instagram', 'facebook', 'linkedin', 'x', 'tiktok', 'youtube', 'pinterest', 'google_business'];
+    }
+
+    function isValidQueueStatus(status) {
+      return status in ['draft', 'scheduled', 'queued', 'processing', 'published', 'failed', 'cancelled', 'awaiting_approval'];
+    }
+
+    // Pillar 2: Validation Blueprints (No existing()/diff() inside these helpers)
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'email', 'fullName', 'role', 'status', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'fullName', 'role', 'emailVerified', 'timezone', 'preferredLanguage', 'status', 'createdAt', 'updatedAt']) &&
+        isValidId(data.uid) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 120 &&
+        data.role in ['customer', 'workspace_admin', 'super_admin'] &&
+        data.status in ['active', 'suspended', 'deleted'] &&
+        (!('emailVerified' in data) || data.emailVerified is bool) &&
+        (!('timezone' in data) || (data.timezone is string && data.timezone.size() <= 64)) &&
+        (!('preferredLanguage' in data) || (data.preferredLanguage is string && data.preferredLanguage.size() <= 16)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAdminRecord(data) {
+      return data.keys().hasAll(['uid', 'email', 'grantedAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'grantedAt']) &&
+        isValidId(data.uid) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        data.grantedAt is timestamp;
+    }
+
+    function isValidWorkspace(data) {
+      return data.keys().hasAll(['id', 'ownerId', 'name', 'brandName', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'ownerId', 'name', 'brandName', 'logoUrl', 'primaryColor', 'secondaryColor', 'businessDescription', 'industry', 'targetAudience', 'preferredLanguage', 'timezone', 'aiCreditsRemaining', 'createdAt', 'updatedAt']) &&
+        isValidId(data.id) &&
+        isValidId(data.ownerId) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+        data.brandName is string && data.brandName.size() >= 1 && data.brandName.size() <= 120 &&
+        (!('logoUrl' in data) || (data.logoUrl is string && data.logoUrl.size() <= 512)) &&
+        (!('primaryColor' in data) || (data.primaryColor is string && data.primaryColor.size() == 7 && data.primaryColor.matches('^#[0-9a-fA-F]{6}$'))) &&
+        (!('secondaryColor' in data) || (data.secondaryColor is string && data.secondaryColor.size() == 7 && data.secondaryColor.matches('^#[0-9a-fA-F]{6}$'))) &&
+        (!('businessDescription' in data) || (data.businessDescription is string && data.businessDescription.size() <= 2000)) &&
+        (!('industry' in data) || (data.industry is string && data.industry.size() <= 100)) &&
+        (!('targetAudience' in data) || (data.targetAudience is string && data.targetAudience.size() <= 500)) &&
+        (!('preferredLanguage' in data) || (data.preferredLanguage is string && data.preferredLanguage.size() <= 16)) &&
+        (!('timezone' in data) || (data.timezone is string && data.timezone.size() <= 64)) &&
+        (!('aiCreditsRemaining' in data) || (data.aiCreditsRemaining is int && data.aiCreditsRemaining >= 0 && data.aiCreditsRemaining <= 1000000)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidWorkspaceMember(data) {
+      return data.keys().hasAll(['workspaceId', 'ownerId', 'memberEmail', 'memberRole', 'status', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['workspaceId', 'ownerId', 'memberEmail', 'memberRole', 'status', 'createdAt', 'updatedAt']) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerId) &&
+        data.memberEmail is string && data.memberEmail.size() >= 3 && data.memberEmail.size() <= 254 &&
+        data.memberRole in ['owner', 'admin', 'editor', 'viewer'] &&
+        data.status in ['active', 'invited', 'revoked'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidContentPost(data) {
+      return data.keys().hasAll(['workspaceId', 'ownerId', 'title', 'body', 'platform', 'status', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['workspaceId', 'ownerId', 'title', 'body', 'platform', 'status', 'scheduledAt', 'createdAt', 'updatedAt']) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerId) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 180 &&
+        data.body is string && data.body.size() >= 1 && data.body.size() <= 5000 &&
+        isValidPlatformKey(data.platform) &&
+        data.status in ['draft', 'pending', 'scheduled', 'published', 'failed'] &&
+        (!('scheduledAt' in data) || (data.scheduledAt is string && data.scheduledAt.size() <= 64)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidMediaAsset(data) {
+      return data.keys().hasAll(['workspaceId', 'ownerId', 'name', 'assetType', 'url', 'createdAt']) &&
+        data.keys().hasOnly(['workspaceId', 'ownerId', 'name', 'assetType', 'url', 'sizeBytes', 'createdAt']) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerId) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 160 &&
+        data.assetType in ['image', 'video', 'document', 'template'] &&
+        data.url is string && data.url.size() >= 1 && data.url.size() <= 1024 &&
+        (!('sizeBytes' in data) || (data.sizeBytes is int && data.sizeBytes >= 0 && data.sizeBytes <= 536870912)) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidNotificationItem(data) {
+      return data.keys().hasAll(['workspaceId', 'ownerId', 'title', 'message', 'isRead', 'createdAt']) &&
+        data.keys().hasOnly(['workspaceId', 'ownerId', 'title', 'message', 'isRead', 'createdAt']) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerId) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 160 &&
+        data.message is string && data.message.size() >= 1 && data.message.size() <= 1000 &&
+        data.isRead is bool &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidSupportTicket(data) {
+      return data.keys().hasAll(['workspaceId', 'ownerId', 'subject', 'message', 'priority', 'status', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['workspaceId', 'ownerId', 'subject', 'message', 'priority', 'status', 'createdAt', 'updatedAt']) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerId) &&
+        data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 180 &&
+        data.message is string && data.message.size() >= 1 && data.message.size() <= 3000 &&
+        data.priority in ['low', 'medium', 'high', 'urgent'] &&
+        data.status in ['open', 'in_progress', 'resolved', 'closed'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['actorId', 'action', 'targetType', 'createdAt']) &&
+        data.keys().hasOnly(['actorId', 'workspaceId', 'action', 'targetType', 'details', 'createdAt']) &&
+        isValidId(data.actorId) &&
+        (!('workspaceId' in data) || (data.workspaceId is string && data.workspaceId.size() <= 128)) &&
+        data.action is string && data.action.size() >= 1 && data.action.size() <= 120 &&
+        data.targetType is string && data.targetType.size() >= 1 && data.targetType.size() <= 64 &&
+        (!('details' in data) || (data.details is string && data.details.size() <= 1000)) &&
+        data.createdAt is timestamp;
+    }
+
+    // Phase 3 Validation Blueprints
+    function isValidAiBrandAnalysis(data) {
+      return data.keys().hasAll(['workspaceId', 'ownerId', 'brandSummary', 'modelName', 'createdAt']) &&
+        data.keys().hasOnly(['workspaceId', 'ownerId', 'brandSummary', 'modelName', 'createdAt']) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerId) &&
+        data.brandSummary is string && data.brandSummary.size() >= 1 && data.brandSummary.size() <= 4000 &&
+        data.modelName is string && data.modelName.size() >= 1 && data.modelName.size() <= 64 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidAiContentStrategy(data) {
+      return data.keys().hasAll(['workspaceId', 'ownerId', 'title', 'executiveSummary', 'modelName', 'createdAt']) &&
+        data.keys().hasOnly(['workspaceId', 'ownerId', 'title', 'executiveSummary', 'modelName', 'createdAt']) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerId) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 180 &&
+        data.executiveSummary is string && data.executiveSummary.size() >= 1 && data.executiveSummary.size() <= 4000 &&
+        data.modelName is string && data.modelName.size() >= 1 && data.modelName.size() <= 64 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidContentCampaign(data) {
+      return data.keys().hasAll(['workspaceId', 'ownerId', 'name', 'status', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['workspaceId', 'ownerId', 'name', 'objective', 'status', 'createdAt', 'updatedAt']) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerId) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 140 &&
+        (!('objective' in data) || (data.objective is string && data.objective.size() <= 500)) &&
+        data.status in ['draft', 'active', 'paused', 'completed', 'archived'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidContentCalendarItem(data) {
+      return data.keys().hasAll(['workspaceId', 'ownerId', 'platformKey', 'title', 'scheduledAt', 'timezone', 'status', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['workspaceId', 'ownerId', 'platformKey', 'title', 'scheduledAt', 'timezone', 'status', 'createdAt', 'updatedAt']) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerId) &&
+        isValidPlatformKey(data.platformKey) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 180 &&
+        data.scheduledAt is string && data.scheduledAt.size() >= 1 && data.scheduledAt.size() <= 64 &&
+        data.timezone is string && data.timezone.size() >= 1 && data.timezone.size() <= 64 &&
+        isValidQueueStatus(data.status) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidGeneratedContent(data) {
+      return data.keys().hasAll(['workspaceId', 'ownerId', 'platformKey', 'title', 'bodyText', 'safetyStatus', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['workspaceId', 'ownerId', 'platformKey', 'title', 'bodyText', 'safetyStatus', 'createdAt', 'updatedAt']) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerId) &&
+        isValidPlatformKey(data.platformKey) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 180 &&
+        data.bodyText is string && data.bodyText.size() >= 1 && data.bodyText.size() <= 6000 &&
+        data.safetyStatus in ['passed', 'flagged', 'blocked'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidGeneratedImage(data) {
+      return data.keys().hasAll(['workspaceId', 'ownerId', 'graphicType', 'aspectRatio', 'prompt', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['workspaceId', 'ownerId', 'graphicType', 'aspectRatio', 'prompt', 'status', 'createdAt']) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerId) &&
+        data.graphicType is string && data.graphicType.size() >= 1 && data.graphicType.size() <= 64 &&
+        data.aspectRatio is string && data.aspectRatio.size() >= 1 && data.aspectRatio.size() <= 16 &&
+        data.prompt is string && data.prompt.size() >= 1 && data.prompt.size() <= 2000 &&
+        data.status in ['pending', 'generated', 'failed'] &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidPublishingQueueItem(data) {
+      return data.keys().hasAll(['workspaceId', 'ownerId', 'platformKey', 'title', 'status', 'publishingMode', 'scheduledAt', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['workspaceId', 'ownerId', 'platformKey', 'title', 'status', 'publishingMode', 'scheduledAt', 'createdAt', 'updatedAt']) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerId) &&
+        isValidPlatformKey(data.platformKey) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 180 &&
+        isValidQueueStatus(data.status) &&
+        data.publishingMode in ['automatic', 'approval_required'] &&
+        data.scheduledAt is string && data.scheduledAt.size() >= 1 && data.scheduledAt.size() <= 64 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidPublishingAttempt(data) {
+      return data.keys().hasAll(['workspaceId', 'ownerId', 'queueId', 'attemptNumber', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['workspaceId', 'ownerId', 'queueId', 'attemptNumber', 'status', 'createdAt']) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerId) &&
+        isValidId(data.queueId) &&
+        data.attemptNumber is int && data.attemptNumber >= 1 && data.attemptNumber <= 50 &&
+        data.status in ['started', 'succeeded', 'retrying', 'failed_permanent', 'rate_limited', 'token_expired'] &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidContentApproval(data) {
+      return data.keys().hasAll(['workspaceId', 'ownerId', 'queueId', 'decision', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['workspaceId', 'ownerId', 'queueId', 'decision', 'notes', 'createdAt', 'updatedAt']) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerId) &&
+        isValidId(data.queueId) &&
+        data.decision in ['pending', 'approved', 'rejected', 'changes_requested'] &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidEngagementMessage(data) {
+      return data.keys().hasAll(['workspaceId', 'ownerId', 'platformKey', 'content', 'status', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['workspaceId', 'ownerId', 'platformKey', 'content', 'status', 'createdAt', 'updatedAt']) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerId) &&
+        isValidPlatformKey(data.platformKey) &&
+        data.content is string && data.content.size() >= 1 && data.content.size() <= 2000 &&
+        data.status in ['open', 'escalated', 'replied', 'archived'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAiReplySuggestion(data) {
+      return data.keys().hasAll(['workspaceId', 'ownerId', 'engagementMessageId', 'suggestedReply', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['workspaceId', 'ownerId', 'engagementMessageId', 'suggestedReply', 'status', 'createdAt']) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerId) &&
+        isValidId(data.engagementMessageId) &&
+        data.suggestedReply is string && data.suggestedReply.size() >= 1 && data.suggestedReply.size() <= 2000 &&
+        data.status in ['suggested', 'approved', 'sent', 'dismissed'] &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidAiGenerationUsage(data) {
+      return data.keys().hasAll(['workspaceId', 'ownerId', 'moduleKey', 'modelName', 'creditsUsed', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['workspaceId', 'ownerId', 'moduleKey', 'modelName', 'creditsUsed', 'status', 'createdAt']) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerId) &&
+        data.moduleKey is string && data.moduleKey.size() >= 1 && data.moduleKey.size() <= 64 &&
+        data.modelName is string && data.modelName.size() >= 1 && data.modelName.size() <= 64 &&
+        data.creditsUsed is int && data.creditsUsed >= 0 && data.creditsUsed <= 1000 &&
+        data.status in ['completed', 'failed'] &&
+        data.createdAt is timestamp;
+    }
+
+    // Collection: /users/{userId} — Pillar 6: PII strictly isolated
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isValidUserProfile(incoming()) &&
+        userId == request.auth.uid &&
+        incoming().uid == request.auth.uid &&
+        incoming().role == 'customer' &&
+        incoming().status == 'active' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() || (
+            isOwner(userId) &&
+            incoming().role == existing().role &&
+            incoming().status == existing().status &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'timezone', 'preferredLanguage', 'updatedAt'])
+          )
+        );
+      allow delete: if isValidId(userId) && (isOwner(userId) || isAdmin());
+    }
+
+    // Collection: /admins/{adminUid}
+    match /admins/{adminUid} {
+      allow get: if isValidId(adminUid) && (isOwner(adminUid) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isAdmin() &&
+        isValidId(adminUid) &&
+        isValidAdminRecord(incoming()) &&
+        incoming().uid == adminUid &&
+        incoming().grantedAt == request.time;
+      allow update: if false;
+      allow delete: if isAdmin() && isValidId(adminUid);
+    }
+
+    // Collection: /workspaces/{workspaceId}
+    match /workspaces/{workspaceId} {
+      allow get: if isValidId(workspaceId) && isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow create: if isVerifiedUser() &&
+        isValidId(workspaceId) &&
+        isValidWorkspace(incoming()) &&
+        incoming().id == workspaceId &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() &&
+        isValidId(workspaceId) &&
+        isValidWorkspace(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() || (
+            existing().ownerId == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'name', 'brandName', 'logoUrl', 'primaryColor', 'secondaryColor',
+              'businessDescription', 'industry', 'targetAudience',
+              'preferredLanguage', 'timezone', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isValidId(workspaceId) && isVerifiedUser() && (existing().ownerId == request.auth.uid || isAdmin());
+
+      // Subcollection: /workspaces/{workspaceId}/members/{memberId}
+      match /members/{memberId} {
+        allow get: if isValidId(workspaceId) && isValidId(memberId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+        allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+        allow create: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(memberId) &&
+          isValidWorkspaceMember(incoming()) &&
+          incoming().workspaceId == workspaceId &&
+          incoming().ownerId == request.auth.uid &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          isWorkspaceOwner(workspaceId);
+        allow update: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(memberId) &&
+          isValidWorkspaceMember(incoming()) &&
+          incoming().workspaceId == existing().workspaceId &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time && (
+            isAdmin() || (
+              isWorkspaceOwner(workspaceId) &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['memberRole', 'status', 'updatedAt'])
+            )
+          );
+        allow delete: if isValidId(workspaceId) && isValidId(memberId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+      }
+
+      // Subcollection: /workspaces/{workspaceId}/posts/{postId}
+      match /posts/{postId} {
+        allow get: if isValidId(workspaceId) && isValidId(postId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+        allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+        allow create: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(postId) &&
+          isValidContentPost(incoming()) &&
+          incoming().workspaceId == workspaceId &&
+          incoming().ownerId == request.auth.uid &&
+          incoming().status in ['draft', 'pending', 'scheduled'] &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          isWorkspaceOwner(workspaceId);
+        allow update: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(postId) &&
+          isValidContentPost(incoming()) &&
+          incoming().workspaceId == existing().workspaceId &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time && (
+            isAdmin() || (
+              isWorkspaceOwner(workspaceId) &&
+              existing().status != 'published' &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['title', 'body', 'platform', 'status', 'scheduledAt', 'updatedAt'])
+            )
+          );
+        allow delete: if isValidId(workspaceId) && isValidId(postId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+      }
+
+      // Subcollection: /workspaces/{workspaceId}/media/{mediaId}
+      match /media/{mediaId} {
+        allow get: if isValidId(workspaceId) && isValidId(mediaId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+        allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+        allow create: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(mediaId) &&
+          isValidMediaAsset(incoming()) &&
+          incoming().workspaceId == workspaceId &&
+          incoming().ownerId == request.auth.uid &&
+          incoming().createdAt == request.time &&
+          isWorkspaceOwner(workspaceId);
+        allow update: if false;
+        allow delete: if isValidId(workspaceId) && isValidId(mediaId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+      }
+
+      // Subcollection: /workspaces/{workspaceId}/notifications/{notificationId}
+      match /notifications/{notificationId} {
+        allow get: if isValidId(workspaceId) && isValidId(notificationId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+        allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+        allow create: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(notificationId) &&
+          isValidNotificationItem(incoming()) &&
+          incoming().workspaceId == workspaceId &&
+          incoming().ownerId == request.auth.uid &&
+          incoming().createdAt == request.time &&
+          isWorkspaceOwner(workspaceId);
+        allow update: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(notificationId) &&
+          isValidNotificationItem(incoming()) &&
+          incoming().workspaceId == existing().workspaceId &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().createdAt == existing().createdAt && (
+            isAdmin() || (
+              isWorkspaceOwner(workspaceId) &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['isRead'])
+            )
+          );
+        allow delete: if isValidId(workspaceId) && isValidId(notificationId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+      }
+
+      // Phase 3 Subcollection: /workspaces/{workspaceId}/ai_brand_analyses/{analysisId}
+      match /ai_brand_analyses/{analysisId} {
+        allow get: if isValidId(workspaceId) && isValidId(analysisId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+        allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+        allow create: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(analysisId) &&
+          isValidAiBrandAnalysis(incoming()) &&
+          incoming().workspaceId == workspaceId &&
+          incoming().ownerId == request.auth.uid &&
+          incoming().createdAt == request.time &&
+          isWorkspaceOwner(workspaceId);
+        allow update: if false;
+        allow delete: if isValidId(workspaceId) && isValidId(analysisId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+      }
+
+      // Phase 3 Subcollection: /workspaces/{workspaceId}/ai_content_strategies/{strategyId}
+      match /ai_content_strategies/{strategyId} {
+        allow get: if isValidId(workspaceId) && isValidId(strategyId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+        allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+        allow create: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(strategyId) &&
+          isValidAiContentStrategy(incoming()) &&
+          incoming().workspaceId == workspaceId &&
+          incoming().ownerId == request.auth.uid &&
+          incoming().createdAt == request.time &&
+          isWorkspaceOwner(workspaceId);
+        allow update: if false;
+        allow delete: if isValidId(workspaceId) && isValidId(strategyId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+      }
+
+      // Phase 3 Subcollection: /workspaces/{workspaceId}/content_campaigns/{campaignId}
+      match /content_campaigns/{campaignId} {
+        allow get: if isValidId(workspaceId) && isValidId(campaignId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+        allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+        allow create: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(campaignId) &&
+          isValidContentCampaign(incoming()) &&
+          incoming().workspaceId == workspaceId &&
+          incoming().ownerId == request.auth.uid &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          isWorkspaceOwner(workspaceId);
+        allow update: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(campaignId) &&
+          isValidContentCampaign(incoming()) &&
+          incoming().workspaceId == existing().workspaceId &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time && (
+            isAdmin() || (
+              isWorkspaceOwner(workspaceId) &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['name', 'objective', 'status', 'updatedAt'])
+            )
+          );
+        allow delete: if isValidId(workspaceId) && isValidId(campaignId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+      }
+
+      // Phase 3 Subcollection: /workspaces/{workspaceId}/content_calendar/{calendarItemId}
+      match /content_calendar/{calendarItemId} {
+        allow get: if isValidId(workspaceId) && isValidId(calendarItemId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+        allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+        allow create: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(calendarItemId) &&
+          isValidContentCalendarItem(incoming()) &&
+          incoming().workspaceId == workspaceId &&
+          incoming().ownerId == request.auth.uid &&
+          incoming().status in ['draft', 'scheduled', 'queued', 'awaiting_approval'] &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          isWorkspaceOwner(workspaceId);
+        allow update: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(calendarItemId) &&
+          isValidContentCalendarItem(incoming()) &&
+          incoming().workspaceId == existing().workspaceId &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time && (
+            isAdmin() || (
+              isWorkspaceOwner(workspaceId) &&
+              existing().status != 'published' &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['title', 'scheduledAt', 'timezone', 'status', 'updatedAt'])
+            )
+          );
+        allow delete: if isValidId(workspaceId) && isValidId(calendarItemId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+      }
+
+      // Phase 3 Subcollection: /workspaces/{workspaceId}/generated_content/{contentId}
+      match /generated_content/{contentId} {
+        allow get: if isValidId(workspaceId) && isValidId(contentId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+        allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+        allow create: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(contentId) &&
+          isValidGeneratedContent(incoming()) &&
+          incoming().workspaceId == workspaceId &&
+          incoming().ownerId == request.auth.uid &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          isWorkspaceOwner(workspaceId);
+        allow update: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(contentId) &&
+          isValidGeneratedContent(incoming()) &&
+          incoming().workspaceId == existing().workspaceId &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time && (
+            isAdmin() || (
+              isWorkspaceOwner(workspaceId) &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['title', 'bodyText', 'safetyStatus', 'updatedAt'])
+            )
+          );
+        allow delete: if isValidId(workspaceId) && isValidId(contentId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+      }
+
+      // Phase 3 Subcollection: /workspaces/{workspaceId}/generated_images/{imageId}
+      match /generated_images/{imageId} {
+        allow get: if isValidId(workspaceId) && isValidId(imageId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+        allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+        allow create: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(imageId) &&
+          isValidGeneratedImage(incoming()) &&
+          incoming().workspaceId == workspaceId &&
+          incoming().ownerId == request.auth.uid &&
+          incoming().createdAt == request.time &&
+          isWorkspaceOwner(workspaceId);
+        allow update: if false;
+        allow delete: if isValidId(workspaceId) && isValidId(imageId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+      }
+
+      // Phase 3 Subcollection: /workspaces/{workspaceId}/publishing_queue/{queueId}
+      match /publishing_queue/{queueId} {
+        allow get: if isValidId(workspaceId) && isValidId(queueId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+        allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+        allow create: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(queueId) &&
+          isValidPublishingQueueItem(incoming()) &&
+          incoming().workspaceId == workspaceId &&
+          incoming().ownerId == request.auth.uid &&
+          incoming().status in ['draft', 'scheduled', 'queued', 'awaiting_approval'] &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          isWorkspaceOwner(workspaceId);
+        allow update: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(queueId) &&
+          isValidPublishingQueueItem(incoming()) &&
+          incoming().workspaceId == existing().workspaceId &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time && (
+            isAdmin() || (
+              isWorkspaceOwner(workspaceId) &&
+              existing().status != 'published' &&
+              incoming().status != 'published' &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['title', 'scheduledAt', 'status', 'publishingMode', 'updatedAt'])
+            )
+          );
+        allow delete: if isValidId(workspaceId) && isValidId(queueId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+      }
+
+      // Phase 3 Subcollection: /workspaces/{workspaceId}/publishing_attempts/{attemptId} (Immutable worker ledger)
+      match /publishing_attempts/{attemptId} {
+        allow get: if isValidId(workspaceId) && isValidId(attemptId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+        allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+        allow create: if isAdmin() &&
+          isValidId(workspaceId) &&
+          isValidId(attemptId) &&
+          isValidPublishingAttempt(incoming()) &&
+          incoming().workspaceId == workspaceId &&
+          incoming().createdAt == request.time;
+        allow update: if false;
+        allow delete: if false;
+      }
+
+      // Phase 3 Subcollection: /workspaces/{workspaceId}/content_approvals/{approvalId}
+      match /content_approvals/{approvalId} {
+        allow get: if isValidId(workspaceId) && isValidId(approvalId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+        allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+        allow create: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(approvalId) &&
+          isValidContentApproval(incoming()) &&
+          incoming().workspaceId == workspaceId &&
+          incoming().ownerId == request.auth.uid &&
+          incoming().decision == 'pending' &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          isWorkspaceOwner(workspaceId);
+        allow update: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(approvalId) &&
+          isValidContentApproval(incoming()) &&
+          incoming().workspaceId == existing().workspaceId &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().queueId == existing().queueId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time && (
+            isAdmin() || (
+              isWorkspaceOwner(workspaceId) &&
+              existing().decision == 'pending' &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['decision', 'notes', 'updatedAt'])
+            )
+          );
+        allow delete: if isAdmin() && isValidId(workspaceId) && isValidId(approvalId);
+      }
+
+      // Phase 3 Subcollection: /workspaces/{workspaceId}/engagement_messages/{messageId}
+      match /engagement_messages/{messageId} {
+        allow get: if isValidId(workspaceId) && isValidId(messageId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+        allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+        allow create: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(messageId) &&
+          isValidEngagementMessage(incoming()) &&
+          incoming().workspaceId == workspaceId &&
+          incoming().ownerId == request.auth.uid &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          isWorkspaceOwner(workspaceId);
+        allow update: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(messageId) &&
+          isValidEngagementMessage(incoming()) &&
+          incoming().workspaceId == existing().workspaceId &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time && (
+            isAdmin() || (
+              isWorkspaceOwner(workspaceId) &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+            )
+          );
+        allow delete: if isValidId(workspaceId) && isValidId(messageId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+      }
+
+      // Phase 3 Subcollection: /workspaces/{workspaceId}/ai_reply_suggestions/{suggestionId}
+      match /ai_reply_suggestions/{suggestionId} {
+        allow get: if isValidId(workspaceId) && isValidId(suggestionId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+        allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+        allow create: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(suggestionId) &&
+          isValidAiReplySuggestion(incoming()) &&
+          incoming().workspaceId == workspaceId &&
+          incoming().ownerId == request.auth.uid &&
+          incoming().createdAt == request.time &&
+          isWorkspaceOwner(workspaceId);
+        allow update: if isVerifiedUser() &&
+          isValidId(workspaceId) &&
+          isValidId(suggestionId) &&
+          isValidAiReplySuggestion(incoming()) &&
+          incoming().workspaceId == existing().workspaceId &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().engagementMessageId == existing().engagementMessageId &&
+          incoming().createdAt == existing().createdAt && (
+            isAdmin() || (
+              isWorkspaceOwner(workspaceId) &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['status'])
+            )
+          );
+        allow delete: if isValidId(workspaceId) && isValidId(suggestionId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+      }
+
+      // Phase 3 Subcollection: /workspaces/{workspaceId}/ai_generation_usage/{usageId} (Immutable usage ledger)
+      match /ai_generation_usage/{usageId} {
+        allow get: if isValidId(workspaceId) && isValidId(usageId) && (isWorkspaceOwner(workspaceId) || isAdmin());
+        allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+        allow create: if isAdmin() &&
+          isValidId(workspaceId) &&
+          isValidId(usageId) &&
+          isValidAiGenerationUsage(incoming()) &&
+          incoming().workspaceId == workspaceId &&
+          incoming().createdAt == request.time;
+        allow update: if false;
+        allow delete: if false;
+      }
+    }
+
+    // Collection: /supportTickets/{ticketId}
+    match /supportTickets/{ticketId} {
+      allow get: if isValidId(ticketId) && isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow create: if isVerifiedUser() &&
+        isValidId(ticketId) &&
+        isValidSupportTicket(incoming()) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().status == 'open' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isWorkspaceOwner(incoming().workspaceId);
+      allow update: if isVerifiedUser() &&
+        isValidId(ticketId) &&
+        isValidSupportTicket(incoming()) &&
+        incoming().workspaceId == existing().workspaceId &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() || (
+            existing().ownerId == request.auth.uid &&
+            existing().status != 'closed' &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['subject', 'message', 'priority', 'updatedAt'])
+          )
+        );
+      allow delete: if isAdmin() && isValidId(ticketId);
+    }
+
+    // Collection: /auditLogs/{logId} — Immutable append-only audit trail
+    match /auditLogs/{logId} {
+      allow get: if isValidId(logId) && isSignedIn() && (existing().actorId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().actorId == request.auth.uid || isAdmin());
+      allow create: if isVerifiedUser() &&
+        isValidId(logId) &&
+        isValidAuditLog(incoming()) &&
+        incoming().actorId == request.auth.uid &&
+        incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}

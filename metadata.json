@@ -1,0 +1,6 @@
+{
+  "name": "LIVINGTECH BRAND AGENCY",
+  "description": "Multi-tenant enterprise social media management, AI content studio, automated publishing, and brand agency SaaS platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
