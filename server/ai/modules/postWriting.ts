@@ -4,7 +4,7 @@ import type { DbInstance } from '../../db/database';
 import type { ContentStudioType, GeneratedContentRecord, PlatformKey } from '../../../src/shared/api-contracts';
 import { getPlatformCharLimit, normalizeHashtags } from '../../../src/utils/domain';
 import { evaluateContentSafety } from '../../services/contentSafetyService';
-import { loadPermittedWorkspaceContext, runStructuredGeminiModule } from '../geminiClient';
+import { formatConnectedSocialContextForAi, loadPermittedWorkspaceContext, runStructuredGeminiModule } from '../geminiClient';
 
 export function mapGeneratedContentRow(r: Record<string, unknown>): GeneratedContentRecord {
   return {
@@ -66,6 +66,11 @@ export async function runPostWritingModule(
   const tone = params.toneOfVoice?.trim() || ctx.brand.toneOfVoice || 'Executive & Authoritative';
   const language = params.language?.trim() || ctx.brand.preferredLanguage || 'en';
 
+  const socialContextBlock = formatConnectedSocialContextForAi(ctx, {
+    platformKey: params.platformKey,
+    socialAccountId: params.socialAccountId,
+  });
+
   const prompt = `Create original, copyright-conscious ${params.contentType.replace(/_/g, ' ')} content for ${params.platformKey.toUpperCase()}.
 Brand: ${ctx.brand.brandName}
 Industry: ${ctx.brand.industry || 'General Business'}
@@ -79,6 +84,8 @@ Topic / Brief: ${params.topic}
 Target Keywords: ${params.keywords.join(', ') || 'None'}
 Hard Platform Character Limit: ${charLimit} characters (bodyText + hashtags MUST stay comfortably under ${charLimit} chars).
 Banned Words (MUST NOT APPEAR): ${ctx.brand.bannedWords.join(', ') || 'None'}
+
+${socialContextBlock}
 
 STRICT COMPLIANCE:
 - Never fabricate customer quotes or fake testimonials.

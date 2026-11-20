@@ -2,7 +2,7 @@ import { Type } from '@google/genai';
 import type { DbInstance } from '../../db/database';
 import type { PlatformKey } from '../../../src/shared/api-contracts';
 import { getPlatformCharLimit, normalizeHashtags } from '../../../src/utils/domain';
-import { loadPermittedWorkspaceContext, runStructuredGeminiModule } from '../geminiClient';
+import { formatConnectedSocialContextForAi, loadPermittedWorkspaceContext, runStructuredGeminiModule } from '../geminiClient';
 
 export interface CaptionWritingResult {
   primaryCaption: string;
@@ -28,13 +28,19 @@ export async function runCaptionWritingModule(
   const ctx = loadPermittedWorkspaceContext(db, params.workspaceId);
   const charLimit = getPlatformCharLimit(params.platformKey);
 
+  const socialContextBlock = formatConnectedSocialContextForAi(ctx, {
+    platformKey: params.platformKey,
+  });
+
   const prompt = `Write 3 tailored captions for ${params.platformKey.toUpperCase()} (hard char limit: ${charLimit}).
 Brand: ${ctx.brand.brandName}
 Tone: ${params.toneOfVoice || ctx.brand.toneOfVoice}
 Language: ${params.language || ctx.brand.preferredLanguage}
 Subject: ${params.subject}
 Visual Context: ${params.visualDescription || 'Branded social media graphic/photo'}
-Banned Words: ${ctx.brand.bannedWords.join(', ') || 'None'}`;
+Banned Words: ${ctx.brand.bannedWords.join(', ') || 'None'}
+
+${socialContextBlock}`;
 
   const result = await runStructuredGeminiModule<Omit<CaptionWritingResult, 'creditsRemaining'>>(db, {
     workspaceId: params.workspaceId,

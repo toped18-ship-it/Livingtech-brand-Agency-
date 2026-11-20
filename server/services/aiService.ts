@@ -4,6 +4,7 @@ import type { DbInstance } from '../db/database';
 import { env } from '../env';
 import { calculateAiCreditCost, normalizeHashtags } from '../../src/utils/domain';
 import type { AiContentSuggestionRecord, PlatformKey } from '../../src/shared/api-contracts';
+import { formatConnectedSocialContextForAi, loadPermittedWorkspaceContext } from '../ai/geminiClient';
 
 const PRIMARY_MODEL = 'gemini-3.5-flash-lite';
 const FALLBACK_MODELS = ['gemini-3.1-flash-lite'] as const;
@@ -135,6 +136,13 @@ export async function generateAiContentPost(
 
   const ai = getGeminiClient();
   const keywordsLine = params.keywords.length > 0 ? params.keywords.join(', ') : 'None specified';
+  let socialContextBlock = '';
+  try {
+    const ctx = loadPermittedWorkspaceContext(db, params.workspaceId);
+    socialContextBlock = `\n\n${formatConnectedSocialContextForAi(ctx, { platformKey: params.platform })}`;
+  } catch {
+    // Workspace may not have a brand profile yet; continue with request fields
+  }
   const prompt = `Create high-impact social media content suggestions for ${params.platform.toUpperCase()}.
 Brand: ${params.brandName}
 Industry: ${params.industry || 'General Business'}
@@ -143,7 +151,7 @@ Tone of Voice: ${params.tone}
 Language: ${params.language}
 Campaign Objective: ${params.objective}
 Topic / Brief: ${params.topic}
-Target Keywords: ${keywordsLine}
+Target Keywords: ${keywordsLine}${socialContextBlock}
 
 Return a structured JSON payload containing:
 - headlines: 3 distinct, compelling headline options tailored to ${params.platform}
@@ -357,13 +365,20 @@ export async function generateAiContentStrategy(
   }
 
   const ai = getGeminiClient();
+  let socialContextBlock = '';
+  try {
+    const ctx = loadPermittedWorkspaceContext(db, params.workspaceId);
+    socialContextBlock = `\n\n${formatConnectedSocialContextForAi(ctx)}`;
+  } catch {
+    // Ignore if workspace profile not initialized
+  }
   const prompt = `Build an actionable 30-day multi-platform social media content strategy.
 Brand: ${params.brandName}
 Industry: ${params.industry || 'Technology & Services'}
 Business Description: ${params.businessDescription || 'Modern growth-oriented brand'}
 Target Audience: ${params.targetAudience || 'Decision makers and customers'}
 Primary Goals: ${params.goals}
-Target Platforms: ${params.platforms.join(', ')}`;
+Target Platforms: ${params.platforms.join(', ')}${socialContextBlock}`;
 
   const now = new Date().toISOString();
   const { response, modelUsed } = await generateWithResilience(ai, prompt, {

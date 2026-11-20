@@ -6,9 +6,57 @@ import { slugifyWorkspaceName, validatePasswordStrength } from '../../src/utils/
 import type { UserProfile, UserRole, WorkspaceSummary } from '../../src/shared/api-contracts';
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const SESSION_RENEW_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000; // Renew when < 3 days remaining
 
 function hashSessionToken(token: string): string {
   return crypto.createHmac('sha256', env.SESSION_SECRET).update(token).digest('hex');
+}
+
+function passwordFingerprint(passwordHash: unknown): string {
+  const raw = typeof passwordHash === 'string' ? passwordHash : '';
+  return crypto.createHash('sha256').update(raw).digest('hex').slice(0, 16);
+}
+
+interface SignedSessionPayload {
+  sid: string;
+  uid: string;
+  email: string;
+  pfp: string;
+  exp: number;
+}
+
+function signSessionToken(payload: SignedSessionPayload): string {
+  const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+  const sig = crypto.createHmac('sha256', env.SESSION_SECRET).update(encoded).digest('base64url');
+  return `lt1.${encoded}.${sig}`;
+}
+
+function verifySignedSessionToken(rawToken: string): SignedSessionPayload | null {
+  if (!rawToken.startsWith('lt1.')) return null;
+  const parts = rawToken.split('.');
+  if (parts.length !== 3) return null;
+  const [, encoded, providedSig] = parts;
+  if (!encoded || !providedSig) return null;
+  const expectedSig = crypto.createHmac('sha256', env.SESSION_SECRET).update(encoded).digest('base64url');
+  const a = Buffer.from(providedSig, 'utf8');
+  const b = Buffer.from(expectedSig, 'utf8');
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as Partial<SignedSessionPayload>;
+    if (
+      typeof parsed.sid === 'string' &&
+      typeof parsed.uid === 'string' &&
+      typeof parsed.email === 'string' &&
+      typeof parsed.pfp === 'string' &&
+      typeof parsed.exp === 'number' &&
+      parsed.exp > Date.now()
+    ) {
+      return parsed as SignedSessionPayload;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 export function mapUserRow(row: Record<string, unknown>): UserProfile {
@@ -28,6 +76,50 @@ export function mapUserRow(row: Record<string, unknown>): UserProfile {
   };
 }
 
+export function getWorkspaceSubscriptionSummary(
+  db: DbInstance,
+  workspaceId: string
+): NonNullable<WorkspaceSummary['subscription']> {
+  const row = db
+    .prepare(`
+      SELECT s.status, s.billing_cycle, s.current_period_end,
+             sp.code as plan_code, sp.name as plan_name,
+             sp.max_workspaces, sp.max_social_accounts, sp.max_team_members, sp.monthly_ai_credits
+      FROM subscriptions s
+      JOIN subscription_plans sp ON sp.id = s.plan_id
+      WHERE s.workspace_id = ?
+      ORDER BY s.updated_at DESC, s.created_at DESC
+      LIMIT 1
+    `)
+    .get(workspaceId) as Record<string, unknown> | undefined;
+
+  if (!row) {
+    return {
+      planCode: 'none',
+      planName: 'No Active Plan',
+      status: 'none',
+      billingCycle: 'monthly',
+      currentPeriodEnd: null,
+      maxWorkspaces: 1,
+      maxSocialAccounts: 0,
+      maxTeamMembers: 1,
+      monthlyAiCredits: 0,
+    };
+  }
+
+  return {
+    planCode: String(row.plan_code) as NonNullable<WorkspaceSummary['subscription']>['planCode'],
+    planName: String(row.plan_name),
+    status: String(row.status) as NonNullable<WorkspaceSummary['subscription']>['status'],
+    billingCycle: String(row.billing_cycle) === 'annual' ? 'annual' : 'monthly',
+    currentPeriodEnd: row.current_period_end ? String(row.current_period_end) : null,
+    maxWorkspaces: Number(row.max_workspaces || 1),
+    maxSocialAccounts: Number(row.max_social_accounts || 0),
+    maxTeamMembers: Number(row.max_team_members || 1),
+    monthlyAiCredits: Number(row.monthly_ai_credits || 0),
+  };
+}
+
 export function listUserWorkspaces(db: DbInstance, userId: string): WorkspaceSummary[] {
   const rows = db.prepare(`
     SELECT DISTINCT w.*,
@@ -41,46 +133,65 @@ export function listUserWorkspaces(db: DbInstance, userId: string): WorkspaceSum
     ORDER BY w.created_at ASC
   `).all(userId, userId, userId) as Record<string, unknown>[];
 
-  return rows.map((r) => ({
-    id: String(r.id),
-    organisationId: String(r.organisation_id),
-    ownerUserId: String(r.owner_user_id),
-    name: String(r.name),
-    slug: String(r.slug),
-    timezone: String(r.timezone),
-    preferredLanguage: String(r.preferred_language),
-    aiCreditsBalance: Number(r.ai_credits_balance),
-    createdAt: String(r.created_at),
-    updatedAt: String(r.updated_at),
-    brandProfile: {
-      id: String(r.bp_id || ''),
-      workspaceId: String(r.id),
-      brandName: String(r.brand_name || r.name),
-      logoUrl: String(r.logo_url || ''),
-      primaryColor: String(r.primary_color || '#0052FF'),
-      secondaryColor: String(r.secondary_color || '#071436'),
-      accentColor: String(r.accent_color || '#F59E0B'),
-      businessDescription: String(r.business_description || ''),
-      industry: String(r.industry || ''),
-      targetAudience: String(r.target_audience || ''),
-      toneOfVoice: String(r.tone_of_voice || 'Executive & Authoritative'),
-      preferredLanguage: String(r.bp_lang || r.preferred_language || 'en'),
-      timezone: String(r.bp_tz || r.timezone || 'UTC'),
-      updatedAt: String(r.bp_updated_at || r.updated_at),
-    },
-  }));
+  return rows.map((r) => {
+    const wid = String(r.id);
+    return {
+      id: wid,
+      organisationId: String(r.organisation_id),
+      ownerUserId: String(r.owner_user_id),
+      name: String(r.name),
+      slug: String(r.slug),
+      timezone: String(r.timezone),
+      preferredLanguage: String(r.preferred_language),
+      aiCreditsBalance: Number(r.ai_credits_balance),
+      createdAt: String(r.created_at),
+      updatedAt: String(r.updated_at),
+      brandProfile: {
+        id: String(r.bp_id || ''),
+        workspaceId: wid,
+        brandName: String(r.brand_name || r.name),
+        logoUrl: String(r.logo_url || ''),
+        primaryColor: String(r.primary_color || '#0052FF'),
+        secondaryColor: String(r.secondary_color || '#071436'),
+        accentColor: String(r.accent_color || '#F59E0B'),
+        businessDescription: String(r.business_description || ''),
+        industry: String(r.industry || ''),
+        targetAudience: String(r.target_audience || ''),
+        toneOfVoice: String(r.tone_of_voice || 'Executive & Authoritative'),
+        preferredLanguage: String(r.bp_lang || r.preferred_language || 'en'),
+        timezone: String(r.bp_tz || r.timezone || 'UTC'),
+        updatedAt: String(r.bp_updated_at || r.updated_at),
+      },
+      subscription: getWorkspaceSubscriptionSummary(db, wid),
+    };
+  });
 }
 
 export function createSession(db: DbInstance, userId: string): string {
-  const rawToken = crypto.randomBytes(32).toString('base64url');
+  const userRow = db.prepare('SELECT email, password_hash FROM users WHERE id = ?').get(userId) as
+    | { email: string; password_hash: string | null }
+    | undefined;
+  const sessionId = crypto.randomUUID();
+  const nowMs = Date.now();
+  const now = new Date(nowMs).toISOString();
+  const expMs = nowMs + SESSION_TTL_MS;
+  const expiresAt = new Date(expMs).toISOString();
+
+  const rawToken = userRow
+    ? signSessionToken({
+        sid: sessionId,
+        uid: userId,
+        email: userRow.email,
+        pfp: passwordFingerprint(userRow.password_hash),
+        exp: expMs,
+      })
+    : crypto.randomBytes(32).toString('base64url');
   const tokenHash = hashSessionToken(rawToken);
-  const now = new Date().toISOString();
-  const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
 
   db.prepare(`
     INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at)
     VALUES (?, ?, ?, ?, ?)
-  `).run(crypto.randomUUID(), userId, tokenHash, expiresAt, now);
+  `).run(sessionId, userId, tokenHash, expiresAt, now);
 
   db.prepare('UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?').run(now, now, userId);
   return rawToken;
@@ -89,16 +200,46 @@ export function createSession(db: DbInstance, userId: string): string {
 export function getUserBySessionToken(db: DbInstance, rawToken: string): UserProfile | null {
   if (!rawToken) return null;
   const tokenHash = hashSessionToken(rawToken);
-  const now = new Date().toISOString();
+  const nowMs = Date.now();
+  const now = new Date(nowMs).toISOString();
   const row = db.prepare(`
-    SELECT u.*
+    SELECT u.*, s.id as session_id, s.expires_at as session_expires_at
     FROM sessions s
     JOIN users u ON u.id = s.user_id
     WHERE s.token_hash = ? AND s.expires_at > ? AND u.status = 'active'
   `).get(tokenHash, now) as Record<string, unknown> | undefined;
 
-  if (!row) return null;
-  return mapUserRow(row);
+  if (row) {
+    // Sliding session renewal: extend active sessions approaching expiry
+    const expMs = Date.parse(String(row.session_expires_at || ''));
+    if (Number.isFinite(expMs) && expMs - nowMs < SESSION_RENEW_THRESHOLD_MS) {
+      const renewedExpires = new Date(nowMs + SESSION_TTL_MS).toISOString();
+      db.prepare('UPDATE sessions SET expires_at = ? WHERE id = ?').run(renewedExpires, String(row.session_id));
+    }
+    return mapUserRow(row);
+  }
+
+  // Serverless cold-start fallback: if ephemeral /tmp SQLite lost the sessions row on a cold start,
+  // verify HMAC-signed token against the active user + password fingerprint and re-hydrate cleanly.
+  const isServerless = process.env.VERCEL === '1' || process.env.AWS_LAMBDA_FUNCTION_VERSION !== undefined;
+  if (isServerless) {
+    const verified = verifySignedSessionToken(rawToken);
+    if (verified) {
+      const userRow = db.prepare(`
+        SELECT * FROM users WHERE (id = ? OR email = ?) AND status = 'active' LIMIT 1
+      `).get(verified.uid, verified.email) as Record<string, unknown> | undefined;
+      if (userRow && passwordFingerprint(userRow.password_hash) === verified.pfp) {
+        const expiresAt = new Date(verified.exp).toISOString();
+        db.prepare(`
+          INSERT OR IGNORE INTO sessions (id, user_id, token_hash, expires_at, created_at)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(verified.sid, String(userRow.id), tokenHash, expiresAt, now);
+        return mapUserRow(userRow);
+      }
+    }
+  }
+
+  return null;
 }
 
 export function revokeSession(db: DbInstance, rawToken: string): void {
@@ -170,9 +311,7 @@ export function registerUserWithWorkspace(
   const wsName = (input.workspaceName || `${input.fullName.split(' ')[0]}'s Brand Workspace`).trim();
   const slugBase = slugifyWorkspaceName(wsName);
   const uniqueSlug = `${slugBase}-${crypto.randomBytes(3).toString('hex')}`;
-  const defaultCreditsRow = db.prepare("SELECT value FROM system_settings WHERE key = 'default_trial_ai_credits'").get() as { value: string } | undefined;
-  const initialCredits = Number(defaultCreditsRow?.value || 250);
-  const starterPlan = db.prepare("SELECT id FROM subscription_plans WHERE code = 'basic'").get() as { id: string };
+  const initialCredits = 0;
   const verifyToken = crypto.randomBytes(20).toString('hex');
 
   const tx = db.transaction(() => {
@@ -203,15 +342,9 @@ export function registerUserWithWorkspace(
       VALUES (?, ?, ?, ?, 'workspace_admin', 'active', ?, ?, ?)
     `).run(crypto.randomUUID(), wsId, userId, email, userId, now, now);
 
-    const periodEnd = new Date(Date.now() + 14 * 86400 * 1000).toISOString();
-    db.prepare(`
-      INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
-      VALUES (?, ?, ?, ?, 'trialing', 'monthly', ?, ?, ?, ?)
-    `).run(crypto.randomUUID(), orgId, wsId, starterPlan.id, now, periodEnd, now, now);
-
     db.prepare(`
       INSERT INTO notifications (id, workspace_id, user_id, category, title, body, is_read, created_at, updated_at)
-      VALUES (?, ?, ?, 'system', 'Welcome to LIVINGTECH BRAND AGENCY', 'Your multi-tenant workspace is ready. Verify your email and connect your official social accounts to start publishing.', 0, ?, ?)
+      VALUES (?, ?, ?, 'billing', 'Select Your Subscription Plan', 'Your workspace is ready. Visit Billing & Subscriptions to choose Basic, Pro, or Enterprise and unlock your package modules.', 0, ?, ?)
     `).run(crypto.randomUUID(), wsId, userId, now, now);
 
     const verifyExpires = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
@@ -291,8 +424,11 @@ export function syncFirebaseGoogleUser(
     const role: UserRole = email === 'livingstoneedu64@gmail.com' ? 'super_admin' : 'customer';
     const wsName = `${input.fullName.split(' ')[0]}'s Agency Workspace`;
     const uniqueSlug = `${slugifyWorkspaceName(wsName)}-${crypto.randomBytes(3).toString('hex')}`;
-    const starterPlan = db.prepare("SELECT id FROM subscription_plans WHERE code = 'basic'").get() as { id: string };
-    const periodEnd = new Date(Date.now() + 14 * 86400 * 1000).toISOString();
+    const enterprisePlan =
+      role === 'super_admin'
+        ? (db.prepare("SELECT id FROM subscription_plans WHERE code = 'enterprise'").get() as { id: string } | undefined)
+        : undefined;
+    const periodEnd = new Date(Date.now() + 365 * 86400 * 1000).toISOString();
 
     db.transaction(() => {
       db.prepare(`
@@ -307,8 +443,8 @@ export function syncFirebaseGoogleUser(
 
       db.prepare(`
         INSERT INTO workspaces (id, organisation_id, owner_user_id, name, slug, timezone, preferred_language, ai_credits_balance, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 'UTC', 'en', 250, ?, ?)
-      `).run(wsId, orgId, userId, wsName, uniqueSlug, now, now);
+        VALUES (?, ?, ?, ?, ?, 'UTC', 'en', ?, ?, ?)
+      `).run(wsId, orgId, userId, wsName, uniqueSlug, role === 'super_admin' ? 15000 : 0, now, now);
 
       db.prepare(`
         INSERT INTO brand_profiles (
@@ -322,10 +458,12 @@ export function syncFirebaseGoogleUser(
         VALUES (?, ?, ?, ?, 'workspace_admin', 'active', ?, ?, ?)
       `).run(crypto.randomUUID(), wsId, userId, email, userId, now, now);
 
-      db.prepare(`
-        INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 'trialing', 'monthly', ?, ?, ?, ?)
-      `).run(crypto.randomUUID(), orgId, wsId, starterPlan.id, now, periodEnd, now, now);
+      if (enterprisePlan) {
+        db.prepare(`
+          INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
+          VALUES (?, ?, ?, ?, 'active', 'annual', ?, ?, ?, ?)
+        `).run(crypto.randomUUID(), orgId, wsId, enterprisePlan.id, now, periodEnd, now, now);
+      }
     })();
 
     row = db.prepare('SELECT * FROM users WHERE id = ?').get(userId) as Record<string, unknown>;

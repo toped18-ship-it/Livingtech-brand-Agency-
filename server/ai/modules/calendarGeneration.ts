@@ -1,7 +1,7 @@
 import { Type } from '@google/genai';
 import type { DbInstance } from '../../db/database';
 import type { PlatformKey, PublishingFormatKey } from '../../../src/shared/api-contracts';
-import { loadPermittedWorkspaceContext, runStructuredGeminiModule } from '../geminiClient';
+import { formatConnectedSocialContextForAi, loadPermittedWorkspaceContext, runStructuredGeminiModule } from '../geminiClient';
 
 export interface CalendarRecommendationItem {
   dayOffset: number;
@@ -38,6 +38,8 @@ export async function runCalendarGenerationModule(
   const hasLiveInsights = ctx.liveAnalytics.length > 0;
   const clampedDays = Math.min(Math.max(params.daysCount, 3), 14);
 
+  const socialContextBlock = formatConnectedSocialContextForAi(ctx);
+
   const prompt = `Generate a ${clampedDays}-day social media content calendar plan.
 CRITICAL HONESTY RULE ABOUT POSTING TIMES:
 ${
@@ -53,6 +55,8 @@ Timezone: ${params.timezone}
 Target Platforms: ${params.platforms.join(', ')}
 Campaign Objective: ${params.campaignObjective}
 Banned Words (MUST NOT appear): ${ctx.brand.bannedWords.join(', ') || 'None'}
+
+${socialContextBlock}
 
 Produce between ${Math.min(clampedDays, 10)} and ${Math.min(clampedDays * 2, 14)} posts distributed across dayOffset 0 to ${clampedDays - 1}.
 Use HH:mm 24-hour format for suggestedLocalTime.`;

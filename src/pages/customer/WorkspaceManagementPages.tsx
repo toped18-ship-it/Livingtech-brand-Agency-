@@ -9,12 +9,24 @@ import {
   Plus,
   X,
   CreditCard,
-  Download,
   Shield,
+  Lock,
+  AlertCircle,
+  CheckCircle2,
+  Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 import { apiClient } from '../../lib/apiClient';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrencyCents } from '../../utils/domain';
+import {
+  ORDERED_FEATURES,
+  PLAN_RANK,
+  getEffectivePlanTier,
+  getTierDisplayName,
+  normalizePlanCode,
+  type PaidPlanTier,
+} from '../../utils/planEntitlements';
 import type {
   NotificationRecord,
   SubscriptionPlanRecord,
@@ -96,49 +108,130 @@ export const BillingSubscriptionsPage: React.FC = () => {
   const { activeWorkspace, refreshSession } = useAuth();
   const [sub, setSub] = useState<WorkspaceSubscriptionRecord | null>(null);
   const [plans, setPlans] = useState<SubscriptionPlanRecord[]>([]);
+  const [history, setHistory] = useState<
+    { id: string; action: string; planCode: string; billingCycle: string; amountCents: number; createdAt: string }[]
+  >([]);
   const [cycle, setCycle] = useState<'monthly' | 'annual'>('monthly');
-  const [notice, setNotice] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busyPlan, setBusyPlan] = useState<string | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const load = async () => {
     if (!activeWorkspace) return;
-    const [s, p] = await Promise.all([apiClient.getSubscription(activeWorkspace.id), apiClient.getPlans()]);
-    setSub(s);
-    setPlans(p);
-    setCycle(s.billingCycle);
+    setLoading(true);
+    try {
+      const [plansRes, subRes, histRes] = await Promise.allSettled([
+        apiClient.getPlans(),
+        apiClient.getSubscription(activeWorkspace.id),
+        apiClient.getBillingHistory(activeWorkspace.id),
+      ]);
+
+      if (plansRes.status === 'fulfilled') {
+        setPlans(plansRes.value);
+      }
+      if (subRes.status === 'fulfilled') {
+        setSub(subRes.value);
+        if (subRes.value.billingCycle === 'annual' || subRes.value.billingCycle === 'monthly') {
+          setCycle(subRes.value.billingCycle);
+        }
+      }
+      if (histRes.status === 'fulfilled') {
+        setHistory(histRes.value);
+      }
+    } catch (err) {
+      setNotice({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Unable to load subscription plans.',
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     void load();
-  }, [activeWorkspace]);
+  }, [activeWorkspace?.id]);
 
-  const handlePlanSwitch = async (planCode: string) => {
+  const effectiveTier = getEffectivePlanTier(
+    sub
+      ? { planCode: sub.planCode, status: sub.status }
+      : activeWorkspace?.subscription
+  );
+  const hasActivePlan = effectiveTier !== 'none';
+
+  const handleSubscribe = async (plan: SubscriptionPlanRecord) => {
     if (!activeWorkspace) return;
     setNotice(null);
-    await apiClient.changeSubscription(activeWorkspace.id, planCode, cycle);
-    setNotice(`Subscription updated to ${planCode.toUpperCase()} (${cycle} billing). AI credits synced.`);
-    await load();
-    await refreshSession();
+    setBusyPlan(plan.code);
+    setConfirmCancel(false);
+    try {
+      await apiClient.changeSubscription(activeWorkspace.id, plan.code, cycle);
+      await load();
+      await refreshSession();
+      setNotice({
+        type: 'success',
+        text: `Subscribed to the ${plan.name} Package (${cycle} billing). Your workspace modules and ${plan.monthlyAiCredits.toLocaleString()} AI credits are now active.`,
+      });
+    } catch (err) {
+      setNotice({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Unable to activate subscription package.',
+      });
+    } finally {
+      setBusyPlan(null);
+    }
+  };
+
+  const handleCancelSubscription = async () => {
+    if (!activeWorkspace) return;
+    setCancelling(true);
+    setNotice(null);
+    try {
+      await apiClient.cancelSubscription(activeWorkspace.id);
+      setConfirmCancel(false);
+      await load();
+      await refreshSession();
+      setNotice({
+        type: 'success',
+        text: 'Subscription cancelled. Paid package modules are now locked until you subscribe to a package.',
+      });
+    } catch (err) {
+      setNotice({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Unable to cancel subscription.',
+      });
+    } finally {
+      setCancelling(false);
+    }
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col justify-between gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-end">
+      <div className="flex flex-col justify-between gap-3 border-b border-sky-400/20 pb-5 sm:flex-row sm:items-end">
         <div>
-          <h1 className="font-display text-2xl font-bold text-slate-900">Billing & Subscriptions</h1>
-          <p className="mt-1 text-sm text-slate-600">Manage workspace plan allocation, AI credit quotas, payment methods, and billing cadence.</p>
+          <h1 className="font-display text-2xl font-bold text-white">Billing & Subscriptions</h1>
+          <p className="mt-1 text-sm text-white/85">
+            Subscribe to a workspace package to unlock its modules and AI credit quotas. Only features included in your subscribed package are accessible.
+          </p>
         </div>
-        <div className="inline-flex items-center gap-1 rounded-lg bg-slate-200/75 p-1 w-fit">
+        <div className="inline-flex items-center gap-1 rounded-lg border border-sky-400/30 bg-[#0b1f52] p-1 w-fit shrink-0">
           <button
             type="button"
             onClick={() => setCycle('monthly')}
-            className={`rounded-md px-3 py-1.5 text-xs font-semibold ${cycle === 'monthly' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`}
+            className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-bold transition-colors ${
+              cycle === 'monthly' ? 'bg-blue-600 text-white shadow-sm' : 'text-white/80 hover:text-white'
+            }`}
           >
             Monthly
           </button>
           <button
             type="button"
             onClick={() => setCycle('annual')}
-            className={`rounded-md px-3 py-1.5 text-xs font-semibold ${cycle === 'annual' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`}
+            className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-bold transition-colors ${
+              cycle === 'annual' ? 'bg-blue-600 text-white shadow-sm' : 'text-white/80 hover:text-white'
+            }`}
           >
             Annual (Save 17%)
           </button>
@@ -146,148 +239,350 @@ export const BillingSubscriptionsPage: React.FC = () => {
       </div>
 
       {notice && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{notice}</div>
+        <div
+          role={notice.type === 'error' ? 'alert' : 'status'}
+          className={`flex items-start gap-2.5 rounded-xl border px-4 py-3 text-sm font-medium ${
+            notice.type === 'success'
+              ? 'border-emerald-400/40 bg-emerald-950/60 text-white'
+              : 'border-rose-400/50 bg-rose-950/70 text-white'
+          }`}
+        >
+          {notice.type === 'success' ? (
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+          ) : (
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-300" />
+          )}
+          <span>{notice.text}</span>
+        </div>
       )}
 
-      {sub && (
-        <section className="lt-neon-hero rounded-2xl p-6 text-white">
+      {/* Current Subscription Summary Banner */}
+      <section className="lt-neon-hero rounded-2xl p-6 text-white">
+        {hasActivePlan && sub ? (
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div>
-              <p className="text-xs font-semibold text-sky-300">Active Subscription</p>
-              <h2 className="mt-1 font-display text-2xl font-bold">{sub.planName} Plan</h2>
-              <p className="mt-1 text-xs text-blue-100">
-                Status: <span className="capitalize font-semibold text-white">{sub.status}</span> · Billing:{' '}
-                <span className="capitalize">{sub.billingCycle}</span> · Renews{' '}
-                <span className="font-mono-tabular">{new Date(sub.currentPeriodEnd).toLocaleDateString()}</span>
+              <p className="text-xs font-semibold text-sky-300">Active Workspace Subscription</p>
+              <h2 className="mt-1 font-display text-2xl font-bold text-white">{sub.planName} Package</h2>
+              <p className="mt-1 text-xs text-white/90">
+                Status: <span className="capitalize font-bold text-emerald-300">{sub.status}</span> · Billing:{' '}
+                <span className="capitalize font-semibold text-white">{sub.billingCycle}</span>
+                {sub.currentPeriodEnd && (
+                  <>
+                    {' '}· Renews{' '}
+                    <span className="font-mono-tabular font-semibold text-white">
+                      {new Date(sub.currentPeriodEnd).toLocaleDateString()}
+                    </span>
+                  </>
+                )}
               </p>
             </div>
-            <div className="text-left sm:text-right">
-              <p className="text-xs text-blue-200">Workspace AI Credits Balance</p>
+            <div className="flex flex-wrap items-center gap-5">
+              <div className="text-left sm:text-right">
+                <p className="text-xs text-white/80">AI Credits Balance</p>
+                <p className="font-mono-tabular text-2xl font-bold text-amber-300">
+                  {(activeWorkspace?.aiCreditsBalance ?? 0).toLocaleString()}
+                </p>
+              </div>
+              {!confirmCancel ? (
+                <button
+                  type="button"
+                  onClick={() => setConfirmCancel(true)}
+                  className="rounded-lg border border-white/25 bg-white/10 px-3.5 py-2 text-xs font-semibold text-white hover:bg-rose-600/80 hover:border-rose-400 transition-colors"
+                >
+                  Cancel Plan
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 rounded-lg border border-rose-400/50 bg-rose-950/70 px-3 py-2">
+                  <span className="text-xs font-semibold text-white">Lock paid modules?</span>
+                  <button
+                    type="button"
+                    disabled={cancelling}
+                    onClick={() => void handleCancelSubscription()}
+                    className="rounded bg-rose-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-rose-500 disabled:opacity-60"
+                  >
+                    {cancelling ? 'Cancelling...' : 'Confirm'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmCancel(false)}
+                    className="rounded border border-white/25 px-2.5 py-1 text-xs font-semibold text-white hover:bg-white/10"
+                  >
+                    Keep
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-amber-400/40 bg-amber-500/20 text-amber-300">
+                <Lock className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-amber-300">No Active Subscription</p>
+                <h2 className="mt-0.5 font-display text-xl font-bold text-white">
+                  Choose a Subscription Package to Activate Your Workspace
+                </h2>
+                <p className="mt-1 text-xs text-white/90">
+                  Select Basic, Pro, or Enterprise below. Only modules included in your chosen package will be unlocked for this workspace.
+                </p>
+              </div>
+            </div>
+            <div className="text-left sm:text-right shrink-0">
+              <p className="text-xs text-white/80">AI Credits Balance</p>
               <p className="font-mono-tabular text-2xl font-bold text-amber-300">
                 {(activeWorkspace?.aiCreditsBalance ?? 0).toLocaleString()}
               </p>
             </div>
           </div>
-        </section>
-      )}
+        )}
+      </section>
 
-      {/* Pricing Plans Grid */}
+      {/* Subscription Packages Grid */}
       <div>
-        <h2 className="font-display text-base font-bold text-slate-900 mb-4">Available Workspace Plans</h2>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          {plans.map((p) => {
-            const isCurrent = sub?.planCode === p.code;
-            const displayPrice = cycle === 'monthly' ? p.monthlyPriceCents : Math.round(p.annualPriceCents / 12);
-            return (
-              <div key={p.id} className="lt-neon-card flex flex-col justify-between rounded-2xl p-5">
-                <div>
-                  <h3 className="font-display text-base font-bold text-slate-900">{p.name}</h3>
-                  <p className="mt-1 text-xs text-slate-500">{p.tagline}</p>
-                  <p className="mt-4 font-mono-tabular text-2xl font-bold text-slate-900">
-                    {formatCurrencyCents(displayPrice)}
-                    <span className="text-xs font-normal text-slate-500"> / mo</span>
-                  </p>
-                  <ul className="mt-4 space-y-2 text-xs text-slate-700">
-                    {p.features.map((f) => (
-                      <li key={f} className="flex items-start gap-2">
-                        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-700" />
-                        <span>{f}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <button
-                  type="button"
-                  disabled={isCurrent}
-                  onClick={() => handlePlanSwitch(p.code)}
-                  className="mt-5 w-full rounded-lg bg-blue-700 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-800 disabled:bg-slate-200 disabled:text-slate-500 transition-colors"
-                >
-                  {isCurrent ? 'Current Plan' : `Switch to ${p.name}`}
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Payment Method & Invoices */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 lg:col-span-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="font-display text-base font-bold text-slate-900 flex items-center gap-2">
-              <CreditCard className="h-4 w-4 text-blue-700" />
-              Payment Method
-            </h2>
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
-              <Shield className="h-3 w-3" /> Secure Vault
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="font-display text-base font-bold text-white">Subscription Packages</h2>
+          {loading && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-sky-300">
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              Loading plans...
             </span>
-          </div>
-          <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-14 items-center justify-center rounded-lg bg-slate-900 font-mono text-xs font-bold text-white">
-                VISA
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-900">Visa ending in •••• 4242</p>
-                <p className="text-[11px] text-slate-500">Expires 12 / 28 · Default Payment Method</p>
-              </div>
-            </div>
+          )}
+        </div>
+
+        {!loading && plans.length === 0 ? (
+          <div className="lt-neon-card rounded-2xl p-8 text-center">
+            <p className="text-sm font-semibold text-white">No subscription plans available right now.</p>
             <button
               type="button"
-              onClick={() => setNotice('Payment method management portal opened.')}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+              onClick={() => void load()}
+              className="mt-3 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-500"
             >
-              Update
+              Retry Loading Plans
             </button>
           </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+            {plans.map((p) => {
+              const planTier = normalizePlanCode(p.code);
+              const isCurrent = hasActivePlan && effectiveTier === planTier && sub?.billingCycle === cycle;
+              const isSameTierOtherCycle = hasActivePlan && effectiveTier === planTier && sub?.billingCycle !== cycle;
+              const isHigher = PLAN_RANK[planTier] > PLAN_RANK[effectiveTier];
+              const displayPrice = cycle === 'monthly' ? p.monthlyPriceCents : Math.round(p.annualPriceCents / 12);
+              const annualTotal = p.annualPriceCents;
+              const isPopular = planTier === 'pro';
+
+              let buttonLabel = `Subscribe to ${p.name}`;
+              if (busyPlan === p.code) {
+                buttonLabel = 'Activating Package...';
+              } else if (isCurrent) {
+                buttonLabel = `Active Plan (${p.name})`;
+              } else if (isSameTierOtherCycle) {
+                buttonLabel = `Switch to ${cycle === 'annual' ? 'Annual' : 'Monthly'} Billing`;
+              } else if (hasActivePlan) {
+                buttonLabel = isHigher ? `Upgrade to ${p.name}` : `Switch to ${p.name}`;
+              }
+
+              return (
+                <div
+                  key={p.id}
+                  className={`lt-neon-card flex flex-col justify-between rounded-2xl p-6 transition-all ${
+                    isCurrent
+                      ? 'ring-2 ring-emerald-400 border-emerald-400/70'
+                      : isPopular
+                      ? 'ring-1 ring-sky-400/70 border-sky-400/60'
+                      : ''
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="font-display text-lg font-bold text-white">{p.name}</h3>
+                      {isCurrent ? (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/20 border border-emerald-400/40 px-2 py-0.5 text-[11px] font-bold text-emerald-300">
+                          <CheckCircle2 className="h-3 w-3" /> Subscribed
+                        </span>
+                      ) : isPopular ? (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-sky-500/20 border border-sky-400/40 px-2 py-0.5 text-[11px] font-bold text-sky-200">
+                          <Sparkles className="h-3 w-3" /> Recommended
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-1.5 text-xs text-white/80">{p.tagline}</p>
+
+                    <div className="mt-4 flex items-baseline gap-1.5">
+                      <span className="font-mono-tabular text-3xl font-bold text-white">
+                        {formatCurrencyCents(displayPrice)}
+                      </span>
+                      <span className="text-xs text-white/80">/ month</span>
+                    </div>
+                    {cycle === 'annual' && (
+                      <p className="mt-1 text-[11px] font-medium text-sky-300">
+                        Billed {formatCurrencyCents(annualTotal)} annually
+                      </p>
+                    )}
+
+                    {/* Quota Strip */}
+                    <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl border border-sky-400/20 bg-[#061233]/70 p-3 text-[11px]">
+                      <div>
+                        <span className="text-white/75 block">Social Accounts</span>
+                        <span className="font-mono-tabular font-bold text-white">Up to {p.maxSocialAccounts}</span>
+                      </div>
+                      <div>
+                        <span className="text-white/75 block">AI Credits / mo</span>
+                        <span className="font-mono-tabular font-bold text-amber-300">
+                          {p.monthlyAiCredits.toLocaleString()}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-white/75 block">Workspaces</span>
+                        <span className="font-mono-tabular font-bold text-white">{p.maxWorkspaces}</span>
+                      </div>
+                      <div>
+                        <span className="text-white/75 block">Team Seats</span>
+                        <span className="font-mono-tabular font-bold text-white">{p.maxTeamMembers}</span>
+                      </div>
+                    </div>
+
+                    <ul className="mt-4 space-y-2 text-xs text-white">
+                      {p.features.map((f) => (
+                        <li key={f} className="flex items-start gap-2">
+                          <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                          <span>{f}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={isCurrent || busyPlan !== null}
+                    onClick={() => void handleSubscribe(p)}
+                    className={`mt-6 w-full rounded-lg px-4 py-2.5 text-xs font-bold transition-colors ${
+                      isCurrent
+                        ? 'border border-emerald-400/40 bg-emerald-500/20 text-emerald-200 cursor-default'
+                        : 'bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-60'
+                    }`}
+                  >
+                    {buttonLabel}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Strict Package Feature Access Matrix */}
+      <section className="lt-neon-card rounded-2xl p-6">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-sky-400/20 pb-4">
+          <div>
+            <h2 className="font-display text-base font-bold text-white flex items-center gap-2">
+              <Shield className="h-4 w-4 text-sky-300" />
+              Package Access Breakdown
+            </h2>
+            <p className="mt-0.5 text-xs text-white/80">
+              Exact platform modules unlocked by each subscription tier. Locked features require subscribing to the corresponding package.
+            </p>
+          </div>
+          <span className="text-xs font-semibold text-sky-300">
+            Active Tier: <strong className="text-white">{getTierDisplayName(effectiveTier)}</strong>
+          </span>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 lg:col-span-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="font-display text-base font-bold text-slate-900 flex items-center gap-2">
-              <Download className="h-4 w-4 text-blue-700" />
-              Recent Invoices
-            </h2>
-            <span className="text-xs text-slate-500">Auto-billed monthly</span>
-          </div>
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3 text-xs">
-              <div>
-                <p className="font-semibold text-slate-900">INV-2026-004 · {sub?.planName || 'Pro'} Plan</p>
-                <p className="text-[11px] text-slate-500">Paid on {new Date().toLocaleDateString()}</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="font-mono-tabular font-bold text-slate-900">{formatCurrencyCents(sub?.monthlyPriceCents || 7900)}</span>
-                <button
-                  type="button"
-                  onClick={() => setNotice('Invoice PDF downloaded successfully.')}
-                  className="rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-                  title="Download PDF"
-                >
-                  <Download className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-            <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3 text-xs">
-              <div>
-                <p className="font-semibold text-slate-900">INV-2026-003 · {sub?.planName || 'Pro'} Plan</p>
-                <p className="text-[11px] text-slate-500">Paid on last month</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="font-mono-tabular font-bold text-slate-900">{formatCurrencyCents(sub?.monthlyPriceCents || 7900)}</span>
-                <button
-                  type="button"
-                  onClick={() => setNotice('Invoice PDF downloaded successfully.')}
-                  className="rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-                  title="Download PDF"
-                >
-                  <Download className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          </div>
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="border-b border-sky-400/20 text-white/80">
+                <th className="py-2.5 pr-4 font-bold">Platform Module</th>
+                <th className="px-3 py-2.5 text-center font-bold">Basic ($29)</th>
+                <th className="px-3 py-2.5 text-center font-bold">Pro ($79)</th>
+                <th className="px-3 py-2.5 text-center font-bold">Enterprise ($299)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-sky-400/15">
+              {ORDERED_FEATURES.map((feat) => {
+                const tiers: PaidPlanTier[] = ['basic', 'pro', 'enterprise'];
+                return (
+                  <tr key={feat.key}>
+                    <td className="py-2.5 pr-4">
+                      <p className="font-semibold text-white">{feat.label}</p>
+                      <p className="text-[11px] text-white/75">{feat.description}</p>
+                    </td>
+                    {tiers.map((tier) => {
+                      const included = PLAN_RANK[tier] >= PLAN_RANK[feat.requiredTier];
+                      return (
+                        <td key={tier} className="px-3 py-2.5 text-center">
+                          {included ? (
+                            <span
+                              title={`Included in ${getTierDisplayName(tier)}`}
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                            </span>
+                          ) : (
+                            <span
+                              title={`Not included in ${getTierDisplayName(tier)}`}
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/5 text-white/40"
+                            >
+                              <Lock className="h-3 w-3" />
+                            </span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-      </div>
+      </section>
+
+      {/* Real Subscription & Billing Activity History */}
+      <section className="lt-neon-card rounded-2xl p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-display text-base font-bold text-white flex items-center gap-2">
+            <CreditCard className="h-4 w-4 text-sky-300" />
+            Subscription Activity Log
+          </h2>
+          <span className="text-xs text-white/75">Live workspace billing events</span>
+        </div>
+
+        {history.length === 0 ? (
+          <div className="rounded-xl border border-sky-400/20 bg-[#061233]/70 p-6 text-center text-xs text-white/80">
+            No subscription transactions recorded yet. Choose a package above to activate your subscription.
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {history.map((item) => (
+              <div
+                key={item.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-400/20 bg-[#061233]/70 px-4 py-3 text-xs"
+              >
+                <div>
+                  <p className="font-bold text-white">
+                    {item.action === 'billing.plan_cancelled'
+                      ? 'Subscription Cancelled'
+                      : item.action === 'billing.plan_subscribed'
+                      ? `Subscribed to ${item.planCode.toUpperCase()} Package`
+                      : `Switched to ${item.planCode.toUpperCase()} Package`}
+                  </p>
+                  <p className="text-[11px] text-white/75">
+                    {new Date(item.createdAt).toLocaleString()}
+                    {item.action !== 'billing.plan_cancelled' ? ` · ${item.billingCycle} billing` : ''}
+                  </p>
+                </div>
+                {item.amountCents > 0 && (
+                  <span className="font-mono-tabular font-bold text-emerald-300">
+                    {formatCurrencyCents(item.amountCents)}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 };

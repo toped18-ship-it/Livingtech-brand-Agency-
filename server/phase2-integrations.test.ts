@@ -25,7 +25,8 @@ import { env } from './env';
 import { parseRateLimitHeaders, ProviderApiError, redactSensitiveTokens } from './integrations/httpClient';
 import { evaluatePermissionScopes } from './integrations/types';
 import { SOCIAL_PROVIDER_LIST } from './integrations/registry';
-import type { PlatformKey } from '../src/shared/api-contracts';
+import { enqueuePublishingJob, executePublishingQueueJob } from './queue/publishingWorker';
+import type { PlatformKey, PublishingFormatKey } from '../src/shared/api-contracts';
 
 function seedTenant(db: DbInstance, email: string, workspaceName: string) {
   const now = new Date().toISOString();
@@ -581,3 +582,224 @@ test('11. Permission denial callback handling & partial scope evaluation', async
     cleanup();
   }
 });
+
+test('12. All 8 social media channels connect, verify, refresh, sync, publish, and disconnect without error', async () => {
+  const { db, tenantA, cleanup } = createTestEnv();
+  try {
+    const channelSpecs: Array<{
+      platformKey: PlatformKey;
+      formatKey: PublishingFormatKey;
+      mediaUrls: string[];
+    }> = [
+      { platformKey: 'facebook', formatKey: 'text', mediaUrls: [] },
+      {
+        platformKey: 'instagram',
+        formatKey: 'image',
+        mediaUrls: ['https://cdn.livingtechbrandagency.com/media/ig-launch.jpg'],
+      },
+      {
+        platformKey: 'tiktok',
+        formatKey: 'video',
+        mediaUrls: ['https://cdn.livingtechbrandagency.com/media/tt-reel.mp4'],
+      },
+      { platformKey: 'linkedin', formatKey: 'text', mediaUrls: [] },
+      {
+        platformKey: 'youtube',
+        formatKey: 'video',
+        mediaUrls: ['https://cdn.livingtechbrandagency.com/media/yt-demo.mp4'],
+      },
+      { platformKey: 'x', formatKey: 'text', mediaUrls: [] },
+      {
+        platformKey: 'pinterest',
+        formatKey: 'image',
+        mediaUrls: ['https://cdn.livingtechbrandagency.com/media/pin-visual.jpg'],
+      },
+      { platformKey: 'google_business', formatKey: 'text', mediaUrls: [] },
+    ];
+
+    assert.equal(channelSpecs.length, 8);
+
+    for (const spec of channelSpecs) {
+      // 1. Build OAuth URL in sandbox mode (no live env keys configured)
+      const init = buildOfficialOAuthUrl(db, {
+        platformKey: spec.platformKey,
+        workspaceId: tenantA.workspaceId,
+        userId: tenantA.user.id,
+        requestOrigin: 'https://agency.example.com',
+      });
+      assert.equal(init.configured, true, `${spec.platformKey}: OAuth should be ready`);
+      assert.equal(init.mode, 'sandbox', `${spec.platformKey}: should run in sandbox mode without live keys`);
+      assert.ok(init.state, `${spec.platformKey}: state must be returned`);
+      assert.ok(
+        init.callbackUrl.endsWith(`/auth/oauth/${spec.platformKey}/callback`),
+        `${spec.platformKey}: callback URL should end with /auth/oauth/${spec.platformKey}/callback`
+      );
+
+      // 2. Complete sandbox authorization & discover accounts
+      const discovery = await handleOAuthCallbackForDiscovery(db, {
+        platformKey: spec.platformKey,
+        state: init.state!,
+        code: `sandbox_auth_code_${spec.platformKey}`,
+      });
+      assert.ok(discovery.discoverySessionId, `${spec.platformKey}: discoverySessionId missing`);
+      assert.ok(discovery.accountCount >= 1, `${spec.platformKey}: expected >=1 discovered account`);
+
+      const session = getDiscoverySession(db, {
+        workspaceId: tenantA.workspaceId,
+        userId: tenantA.user.id,
+        sessionId: discovery.discoverySessionId,
+      });
+      assert.ok(session, `${spec.platformKey}: discovery session must load`);
+      assert.equal(session.accounts[0].avatarUrl, null, `${spec.platformKey}: sandbox avatarUrl should be null`);
+
+      // 3. Connect selected account
+      const connected = connectSelectedDiscoveredAccounts(db, {
+        workspaceId: tenantA.workspaceId,
+        userId: tenantA.user.id,
+        sessionId: discovery.discoverySessionId,
+        externalAccountIds: [session.accounts[0].externalAccountId],
+      });
+      assert.equal(connected.connectedCount, 1, `${spec.platformKey}: should connect 1 account`);
+      const accountId = connected.accounts[0].accountId;
+
+      // 4. Verify health, refresh token, and sync metrics
+      const health = verifyStoredAccountTokenHealth(db, tenantA.workspaceId, accountId);
+      assert.equal(health.healthy, true, `${spec.platformKey}: account health should be healthy`);
+      assert.equal(health.status, 'connected');
+
+      const refreshed = await refreshSocialAccountToken(db, tenantA.workspaceId, accountId, tenantA.user.id);
+      assert.equal(refreshed.refreshed, true, `${spec.platformKey}: token refresh should succeed`);
+      assert.ok(refreshed.expiresAt, `${spec.platformKey}: refreshed token must have expiresAt`);
+
+      const synced = await syncSocialAccountData(db, tenantA.workspaceId, accountId, tenantA.user.id);
+      assert.equal(synced.status, 'succeeded', `${spec.platformKey}: sync should succeed`);
+      assert.ok(synced.itemsSynced > 0, `${spec.platformKey}: itemsSynced should be > 0`);
+
+      // 5. Enqueue and dispatch a post to the connected channel
+      const queued = enqueuePublishingJob(db, {
+        workspaceId: tenantA.workspaceId,
+        userId: tenantA.user.id,
+        platformKey: spec.platformKey,
+        socialAccountId: accountId,
+        formatKey: spec.formatKey,
+        title: `Launch Announcement for ${spec.platformKey}`,
+        bodyText: `Verified multi-channel campaign update for ${spec.platformKey} (${Date.now()}).`,
+        hashtags: ['#LivingTech', '#BrandGrowth'],
+        mediaUrls: spec.mediaUrls,
+        scheduledAtLocalOrIso: new Date(Date.now() - 1000).toISOString(),
+        timezone: 'UTC',
+      });
+      assert.ok(
+        queued.job.status === 'queued' || queued.job.status === 'scheduled',
+        `${spec.platformKey}: job should enqueue as queued or scheduled, got ${queued.job.status}`
+      );
+
+      const published = await executePublishingQueueJob(db, queued.job.id, { workerId: 'test-worker' });
+      assert.equal(
+        published.status,
+        'published',
+        `${spec.platformKey}: expected published status, got ${published.status} (${published.lastError || 'no error'})`
+      );
+      assert.ok(published.platformPostId, `${spec.platformKey}: platformPostId must be present`);
+      assert.ok(
+        published.platformPermalink && published.platformPermalink.startsWith('https://'),
+        `${spec.platformKey}: platformPermalink must be a valid https URL`
+      );
+      assert.equal(published.lastError, null, `${spec.platformKey}: lastError should be null`);
+
+      // 6. Disconnect cleanly
+      const disconnected = await disconnectSocialAccount(db, {
+        workspaceId: tenantA.workspaceId,
+        accountId,
+        actorUserId: tenantA.user.id,
+        actorEmail: tenantA.user.email,
+      });
+      assert.equal(disconnected.success, true, `${spec.platformKey}: disconnect should succeed`);
+    }
+  } finally {
+    cleanup();
+  }
+});
+
+test('13. Owner social auth imports custom profile, audience baseline, and recent posts directly into AI context', async () => {
+  const { db, tenantA, cleanup } = createTestEnv();
+  try {
+    const { formatConnectedSocialContextForAi, loadPermittedWorkspaceContext } = await import('./ai/geminiClient');
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO brand_profiles (
+        id, workspace_id, brand_name, business_description, industry, target_audience, tone_of_voice, created_at, updated_at
+      ) VALUES (?, ?, 'Creator Studio', '', '', 'Filmmakers & Brands', 'Energetic & Practical', ?, ?)
+    `).run(crypto.randomUUID(), tenantA.workspaceId, now, now);
+
+    const init = buildOfficialOAuthUrl(db, {
+      platformKey: 'tiktok',
+      workspaceId: tenantA.workspaceId,
+      userId: tenantA.user.id,
+      requestOrigin: 'https://agency.example.com',
+    });
+    assert.equal(init.configured, true);
+    assert.equal(init.mode, 'sandbox');
+
+    const discovery = await handleOAuthCallbackForDiscovery(db, {
+      platformKey: 'tiktok',
+      state: init.state!,
+      code: 'sandbox_auth_code_tiktok',
+      ownerProfile: {
+        accountName: 'Creator Studio Live',
+        accountHandle: '@creator_studio_live',
+        ownerEmail: 'founder@creatorstudio.io',
+        businessCategory: 'Creative Production',
+        accountDescription: 'Daily short-form filmmaking tips, lighting breakdowns, and brand reels.',
+        followersCount: 24500,
+        recentPosts: [
+          'How we lit a 30-second product launch reel with two softboxes and natural window bounce.',
+          '3 pacing hooks that kept viewers watching through our agency case study breakdown.',
+        ],
+      },
+    });
+    assert.equal(discovery.accountCount, 1);
+
+    const session = getDiscoverySession(db, {
+      workspaceId: tenantA.workspaceId,
+      userId: tenantA.user.id,
+      sessionId: discovery.discoverySessionId,
+    });
+    assert.ok(session);
+    assert.equal(session.accounts[0].accountName, 'Creator Studio Live');
+    assert.equal(session.accounts[0].accountHandle, '@creator_studio_live');
+    assert.equal(session.accounts[0].followersCount, 24500);
+
+    const connected = connectSelectedDiscoveredAccounts(db, {
+      workspaceId: tenantA.workspaceId,
+      userId: tenantA.user.id,
+      sessionId: discovery.discoverySessionId,
+      externalAccountIds: [session.accounts[0].externalAccountId],
+    });
+    assert.equal(connected.connectedCount, 1);
+    assert.equal(connected.importedContentCount, 2);
+    assert.equal(connected.aiContextReady, true);
+
+    const syncedPosts = db
+      .prepare(
+        "SELECT title, caption FROM content_posts WHERE workspace_id = ? AND campaign_tag = 'synced_profile_context'"
+      )
+      .all(tenantA.workspaceId) as { title: string; caption: string }[];
+    assert.equal(syncedPosts.length, 2);
+
+    const ctx = loadPermittedWorkspaceContext(db, tenantA.workspaceId);
+    assert.equal(ctx.brand.industry, 'Creative Production');
+    assert.ok(ctx.brand.businessDescription.includes('Daily short-form filmmaking tips'));
+
+    const aiPromptContext = formatConnectedSocialContextForAi(ctx, { platformKey: 'tiktok' });
+    assert.ok(aiPromptContext.includes('Creator Studio Live'));
+    assert.ok(aiPromptContext.includes('@creator_studio_live'));
+    assert.ok(aiPromptContext.includes('24,500 followers'));
+    assert.ok(aiPromptContext.includes('Creative Production'));
+    assert.ok(aiPromptContext.includes('Daily short-form filmmaking tips'));
+    assert.ok(aiPromptContext.includes('two softboxes'));
+  } finally {
+    cleanup();
+  }
+});
+

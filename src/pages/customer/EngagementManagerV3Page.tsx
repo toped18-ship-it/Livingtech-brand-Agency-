@@ -322,11 +322,6 @@ export const EngagementManagerV3Page: React.FC = () => {
                     </span>
                     <span className="text-xs font-bold text-slate-900">{msg.authorName}</span>
                     <span className="text-xs text-slate-500">{msg.authorHandle}</span>
-                    {msg.isDemo && (
-                      <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
-                        Sample Inbox Item
-                      </span>
-                    )}
                     {(msg.requiresEscalation || msg.status === 'escalated') && (
                       <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
                         <ShieldAlert className="h-3 w-3" />

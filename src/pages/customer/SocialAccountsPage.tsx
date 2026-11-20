@@ -8,8 +8,9 @@ import {
   Eye,
   Clock,
   RotateCcw,
-  Sliders,
   Share2,
+  Sparkles,
+  CalendarDays,
 } from 'lucide-react';
 import { apiClient } from '../../lib/apiClient';
 import { openOAuthFlow } from '../../lib/oauthPopup';
@@ -34,6 +35,11 @@ import {
   AccountDetailDrawer,
   type AccountDrawerTab,
 } from '../../components/social/AccountDetailDrawer';
+import {
+  SocialAuthPage,
+  type SocialAuthOwnerProfile,
+} from '../../components/social/SocialAuthPage';
+import type { CustomerRoute } from './types';
 
 const PLATFORM_ORDER: PlatformKey[] = [
   'facebook',
@@ -57,8 +63,12 @@ const PLATFORM_DESCRIPTIONS: Record<PlatformKey, string> = {
   google_business: 'Publish local announcements, updates, and offers.',
 };
 
-export const SocialAccountsPage: React.FC = () => {
-  const { activeWorkspace } = useAuth();
+interface SocialAccountsPageProps {
+  onNavigate?: (route: CustomerRoute) => void;
+}
+
+export const SocialAccountsPage: React.FC<SocialAccountsPageProps> = ({ onNavigate }) => {
+  const { user, activeWorkspace } = useAuth();
   const [accounts, setAccounts] = useState<SocialAccountRecord[]>([]);
   const [platforms, setPlatforms] = useState<SocialPlatformInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,11 +76,24 @@ export const SocialAccountsPage: React.FC = () => {
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [confirmDisconnectId, setConfirmDisconnectId] = useState<string | null>(null);
   const [platformFilter, setPlatformFilter] = useState<PlatformKey | 'all'>('all');
-  const [notice, setNotice] = useState<{ type: 'info' | 'error' | 'success'; text: string } | null>(null);
+  const [notice, setNotice] = useState<{
+    type: 'info' | 'error' | 'success';
+    text: string;
+    showAiActions?: boolean;
+  } | null>(null);
 
-  // Discovery session
+  // Discovery session & dedicated full-screen social authentication page
   const [discoverySession, setDiscoverySession] = useState<OAuthDiscoverySession | null>(null);
   const [connectingSelected, setConnectingSelected] = useState(false);
+  const [authPageSession, setAuthPageSession] = useState<{
+    platform: PlatformKey;
+    displayName: string;
+    state: string;
+    callbackUrl: string;
+    permissions: { scopeKey: string; label: string; description: string; isRequired: boolean }[];
+  } | null>(null);
+  const [authPageError, setAuthPageError] = useState<string | null>(null);
+  const [authorizingSandbox, setAuthorizingSandbox] = useState(false);
 
   // Account details drawer
   const [activeDetail, setActiveDetail] = useState<SocialAccountDetailPayload | null>(null);
@@ -104,7 +127,15 @@ export const SocialAccountsPage: React.FC = () => {
   const runPreFlightCheck = async (
     platform: PlatformKey,
     reconnectAccountId?: string
-  ): Promise<{ configured: boolean; url?: string; error?: string }> => {
+  ): Promise<{
+    configured: boolean;
+    mode?: 'sandbox' | 'live';
+    url?: string;
+    callbackUrl?: string;
+    state?: string;
+    requestedPermissions?: { scopeKey: string; label: string; description: string; isRequired: boolean }[];
+    error?: string;
+  }> => {
     try {
       const res = await apiClient.getOAuthUrl(activeWorkspace!.id, platform, reconnectAccountId);
       if (!res.configured || !res.url) {
@@ -113,7 +144,14 @@ export const SocialAccountsPage: React.FC = () => {
           error: `Platform API configuration incomplete (${res.missingEnvVars?.join(', ') || 'Missing credentials'}).`,
         };
       }
-      return { configured: true, url: res.url };
+      return {
+        configured: true,
+        mode: res.mode,
+        url: res.url,
+        callbackUrl: res.callbackUrl,
+        state: res.state,
+        requestedPermissions: res.requestedPermissions,
+      };
     } catch (err) {
       return {
         configured: false,
@@ -125,6 +163,7 @@ export const SocialAccountsPage: React.FC = () => {
   const handleConnect = async (platform: PlatformKey, reconnectAccountId?: string) => {
     if (!activeWorkspace) return;
     setNotice(null);
+    setAuthPageError(null);
     setConnectingKey(platform);
 
     // Front-end pre-flight check function querying platform API configuration status
@@ -138,7 +177,21 @@ export const SocialAccountsPage: React.FC = () => {
       return;
     }
 
-    // Use shared openOAuthFlow utility for safe window opening, OAUTH_DISCOVERY_READY listening, and immediate grid refresh
+    // Dedicated full-screen Social Media Authentication & Authorization Page (iframe-safe)
+    if (preFlight.mode === 'sandbox' && preFlight.state) {
+      const platformInfo = platforms.find((p) => p.key === platform);
+      setConnectingKey(null);
+      setAuthPageSession({
+        platform,
+        displayName: platformInfo?.displayName || platform.replace('_', ' ').toUpperCase(),
+        state: preFlight.state,
+        callbackUrl: preFlight.callbackUrl || `${window.location.origin}/auth/oauth/${platform}/callback`,
+        permissions: preFlight.requestedPermissions || [],
+      });
+      return;
+    }
+
+    // Live provider OAuth popup flow (external provider URL)
     const { windowRef } = openOAuthFlow({
       url: preFlight.url,
       platform,
@@ -188,6 +241,40 @@ export const SocialAccountsPage: React.FC = () => {
     }
   };
 
+  const handleConfirmSocialAuth = async (ownerProfile: SocialAuthOwnerProfile) => {
+    if (!activeWorkspace || !authPageSession) return;
+    setAuthorizingSandbox(true);
+    setAuthPageError(null);
+    setNotice(null);
+    try {
+      const authRes = await apiClient.authorizeSandboxOAuth(
+        activeWorkspace.id,
+        authPageSession.platform,
+        authPageSession.state,
+        ownerProfile
+      );
+      const session = await apiClient.getOAuthDiscoverySession(
+        activeWorkspace.id,
+        authRes.discoverySessionId
+      );
+      setAuthPageSession(null);
+      setDiscoverySession(session);
+      setNotice({
+        type: 'info',
+        text: `Authorized ${session.platformName}. Confirm the discovered account below to sync profile & content for AI scheduling and publishing.`,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Channel authorization failed.';
+      setAuthPageError(msg);
+      setNotice({
+        type: 'error',
+        text: msg,
+      });
+    } finally {
+      setAuthorizingSandbox(false);
+    }
+  };
+
   const handleConfirmDiscovered = async (externalAccountIds: string[]) => {
     if (!activeWorkspace || !discoverySession) return;
     setConnectingSelected(true);
@@ -197,12 +284,19 @@ export const SocialAccountsPage: React.FC = () => {
         discoverySession.sessionId,
         externalAccountIds
       );
+      const handles = res.accounts.map((a) => a.accountHandle).filter(Boolean).join(', ');
+      const contentSuffix =
+        res.importedContentCount && res.importedContentCount > 0
+          ? ` and synced ${res.importedContentCount} content item(s)`
+          : '';
       setDiscoverySession(null);
       setNotice({
         type: 'success',
-        text: `Successfully connected ${res.connectedCount} ${discoverySession.platformName} account(s).`,
+        text: `Connected ${res.connectedCount} ${discoverySession.platformName} account(s)${handles ? ` (${handles})` : ''}${contentSuffix}. Your profile & content are now ready for AI generation, scheduling, and publishing.`,
+        showAiActions: true,
       });
       await loadData();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
       setNotice({
         type: 'error',
@@ -417,7 +511,7 @@ export const SocialAccountsPage: React.FC = () => {
       {notice && (
         <div
           role="status"
-          className={`flex items-start gap-2.5 rounded-xl border px-4 py-3 text-sm shadow-xs ${
+          className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm shadow-xs ${
             notice.type === 'error'
               ? 'border-rose-200 bg-rose-50 text-rose-800'
               : notice.type === 'success'
@@ -425,12 +519,34 @@ export const SocialAccountsPage: React.FC = () => {
               : 'border-blue-200 bg-blue-50 text-blue-950'
           }`}
         >
-          {notice.type === 'success' ? (
-            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-          ) : (
-            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="flex items-start gap-2.5 min-w-0 flex-1">
+            {notice.type === 'success' ? (
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+            ) : (
+              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+            )}
+            <span className="break-words font-medium">{notice.text}</span>
+          </div>
+          {notice.showAiActions && onNavigate && (
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => onNavigate('ai-studio')}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-800 transition-colors"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                Generate AI Post
+              </button>
+              <button
+                type="button"
+                onClick={() => onNavigate('calendar')}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-sky-400/40 bg-blue-950/60 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-900 transition-colors"
+              >
+                <CalendarDays className="h-3.5 w-3.5" />
+                Schedule Post
+              </button>
+            </div>
           )}
-          <span className="break-words font-medium">{notice.text}</span>
         </div>
       )}
 
@@ -547,9 +663,9 @@ export const SocialAccountsPage: React.FC = () => {
 
                     {/* Metadata & Capabilities */}
                     <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3 text-xs space-y-1.5">
-                      <div className="flex items-center justify-between text-slate-600">
-                        <span className="font-medium">Publishing:</span>
-                        <span className="font-semibold text-slate-900">
+                      <div className="flex items-start justify-between gap-3 text-slate-600">
+                        <span className="shrink-0 font-medium">Publishing:</span>
+                        <span className="text-right font-semibold text-slate-900">
                           {summarizePublishingCapabilities(acc.capabilities)}
                         </span>
                       </div>
@@ -584,6 +700,16 @@ export const SocialAccountsPage: React.FC = () => {
                         <Eye className="h-3 w-3" />
                         Manage
                       </button>
+                      {onNavigate && acc.connectionStatus === 'connected' && (
+                        <button
+                          type="button"
+                          onClick={() => onNavigate('ai-studio')}
+                          className="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-blue-700"
+                        >
+                          <Sparkles className="h-3 w-3" />
+                          AI Post
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => void handleConnect(acc.platformKey, acc.id)}
@@ -702,6 +828,27 @@ export const SocialAccountsPage: React.FC = () => {
           })}
         </div>
       </section>
+
+      {/* Dedicated Full-Screen Social Media Owner Authentication & Authorization Page */}
+      {authPageSession && (
+        <SocialAuthPage
+          platform={authPageSession.platform}
+          displayName={authPageSession.displayName}
+          callbackUrl={authPageSession.callbackUrl}
+          permissions={authPageSession.permissions}
+          defaultBrandName={activeWorkspace?.brandProfile?.brandName || activeWorkspace?.name || ''}
+          defaultOwnerEmail={user?.email || ''}
+          defaultIndustry={activeWorkspace?.brandProfile?.industry || ''}
+          defaultDescription={activeWorkspace?.brandProfile?.businessDescription || ''}
+          submitting={authorizingSandbox}
+          errorMessage={authPageError}
+          onAuthorize={handleConfirmSocialAuth}
+          onCancel={() => {
+            setAuthPageSession(null);
+            setAuthPageError(null);
+          }}
+        />
+      )}
 
       {/* Account Discovery Modal */}
       {discoverySession && (

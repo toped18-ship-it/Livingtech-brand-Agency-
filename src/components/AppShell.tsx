@@ -23,11 +23,19 @@ import {
   ChevronDown,
   Image as ImageIcon,
   History,
+  Lock,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSystemSettings } from '../context/SystemSettingsContext';
 import { hasSuperAdminAccess } from '../utils/domain';
+import {
+  canAccessRoute,
+  getEffectivePlanTier,
+  getRequiredPlanForRoute,
+  getTierDisplayName,
+} from '../utils/planEntitlements';
 import { PWAInstallButton } from './PWAControls';
+import { SubscriptionGate } from './SubscriptionGate';
 import type { CustomerRoute } from '../pages/customer/types';
 import { OverviewDashboard } from '../pages/customer/OverviewDashboard';
 import { SocialAccountsPage } from '../pages/customer/SocialAccountsPage';
@@ -131,12 +139,24 @@ export const AppShell: React.FC<AppShellProps> = ({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const canAccessAdmin = hasSuperAdminAccess(user?.role);
 
+  const currentPlanTier = getEffectivePlanTier(activeWorkspace?.subscription);
+
   const renderPage = () => {
+    if (!canAccessRoute(activeWorkspace?.subscription, route)) {
+      return (
+        <SubscriptionGate
+          route={route}
+          subscription={activeWorkspace?.subscription}
+          onGoToBilling={() => onNavigate('billing')}
+        />
+      );
+    }
+
     switch (route) {
       case 'overview':
         return <OverviewDashboard onNavigate={onNavigate} />;
       case 'social-accounts':
-        return <SocialAccountsPage />;
+        return <SocialAccountsPage onNavigate={onNavigate} />;
       case 'ai-studio':
         return <AiContentStudioPage />;
       case 'graphic-designer':
@@ -234,20 +254,38 @@ export const AppShell: React.FC<AppShellProps> = ({
             </select>
             <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-white" />
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              onNavigate('brand-settings');
-              setDrawerOpen(false);
-            }}
-            className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-white hover:text-sky-200 transition-colors"
-          >
-            <Plus className="h-3 w-3" />
-            Create or configure workspace
-          </button>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                onNavigate('billing');
+                setDrawerOpen(false);
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-bold transition-colors ${
+                currentPlanTier === 'none'
+                  ? 'border-amber-400/50 bg-amber-500/20 text-amber-200 hover:bg-amber-500/30'
+                  : 'border-sky-400/40 bg-sky-500/15 text-sky-100 hover:bg-sky-500/25'
+              }`}
+            >
+              <CreditCard className="h-3 w-3 shrink-0" />
+              {currentPlanTier === 'none' ? 'No Plan · Subscribe' : `${getTierDisplayName(currentPlanTier)} Plan`}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onNavigate('brand-settings');
+                setDrawerOpen(false);
+              }}
+              className="inline-flex items-center gap-1 text-[11px] font-bold text-white hover:text-sky-200 transition-colors"
+              title="Create or configure workspace"
+            >
+              <Plus className="h-3 w-3" />
+              Brand
+            </button>
+          </div>
         </div>
 
-        {/* 15 Customer Application Navigation Links */}
+        {/* Customer Application Navigation Links */}
         <nav aria-label="Customer application navigation" className="flex-1 overflow-y-auto px-3 py-3 space-y-5">
           {NAV_GROUPS.map((group) => (
             <div key={group.label}>
@@ -258,6 +296,8 @@ export const AppShell: React.FC<AppShellProps> = ({
                 {group.items.map((item) => {
                   const Icon = item.icon;
                   const active = route === item.id;
+                  const unlocked = canAccessRoute(activeWorkspace?.subscription, item.id);
+                  const requiredTier = getRequiredPlanForRoute(item.id);
                   return (
                     <button
                       key={item.id}
@@ -266,14 +306,29 @@ export const AppShell: React.FC<AppShellProps> = ({
                         onNavigate(item.id);
                         setDrawerOpen(false);
                       }}
-                      className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-semibold transition-colors whitespace-nowrap ${
+                      title={
+                        unlocked
+                          ? item.label
+                          : `${item.label} requires ${requiredTier ? getTierDisplayName(requiredTier) : 'an active'} plan`
+                      }
+                      className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold transition-colors whitespace-nowrap ${
                         active
                           ? 'bg-blue-600 text-white shadow-sm font-bold'
-                          : 'text-white hover:bg-white/15 hover:text-white'
+                          : unlocked
+                          ? 'text-white hover:bg-white/15 hover:text-white'
+                          : 'text-white/60 hover:bg-white/10 hover:text-white/90'
                       }`}
                     >
-                      <Icon className="h-4 w-4 shrink-0" />
-                      <span className="truncate">{item.label}</span>
+                      <span className="flex items-center gap-2.5 min-w-0">
+                        <Icon className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{item.label}</span>
+                      </span>
+                      {!unlocked && (
+                        <span className="inline-flex items-center gap-1 shrink-0 text-[10px] font-bold text-amber-300">
+                          <Lock className="h-3 w-3" />
+                          <span>{requiredTier === 'enterprise' ? 'Ent' : requiredTier === 'pro' ? 'Pro' : 'Basic'}</span>
+                        </span>
+                      )}
                     </button>
                   );
                 })}

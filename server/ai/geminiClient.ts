@@ -161,6 +161,54 @@ export function loadPermittedWorkspaceContext(db: DbInstance, workspaceId: strin
   return { brand, accounts, recentPosts, liveAnalytics, mediaAssets };
 }
 
+export function formatConnectedSocialContextForAi(
+  ctx: ReturnType<typeof loadPermittedWorkspaceContext>,
+  options?: { platformKey?: string; socialAccountId?: string | null }
+): string {
+  const targetedAccounts = ctx.accounts.filter((a) => {
+    if (options?.socialAccountId && String(a.id) === options.socialAccountId) return true;
+    if (options?.platformKey && String(a.platform_key) === options.platformKey) return true;
+    return !options?.platformKey && !options?.socialAccountId;
+  });
+  const accountList = targetedAccounts.length > 0 ? targetedAccounts : ctx.accounts;
+
+  const accountSummary =
+    accountList.length > 0
+      ? accountList
+          .slice(0, 6)
+          .map((a) => {
+            const followers =
+              a.followers_count !== null && a.followers_count !== undefined
+                ? `${Number(a.followers_count).toLocaleString()} followers`
+                : 'followers n/a';
+            const bio = a.account_description ? ` | Bio: ${String(a.account_description).slice(0, 220)}` : '';
+            const category = a.business_category ? ` | Category: ${String(a.business_category)}` : '';
+            return `- ${String(a.platform_key).toUpperCase()}: ${String(a.account_name)} (${String(a.account_handle)}, ${followers}${category}${bio})`;
+          })
+          .join('\n')
+      : '- No connected social accounts yet (rely on workspace brand profile).';
+
+  const relevantPosts = ctx.recentPosts.filter(
+    (p) => !options?.platformKey || String(p.platform_key) === options.platformKey
+  );
+  const postsToShow = (relevantPosts.length > 0 ? relevantPosts : ctx.recentPosts).slice(0, 6);
+  const contentSummary =
+    postsToShow.length > 0
+      ? postsToShow
+          .map(
+            (p) =>
+              `- [${String(p.platform_key).toUpperCase()}] ${String(p.title)}: ${String(p.caption || '').slice(0, 180)}`
+          )
+          .join('\n')
+      : '- No prior synced or published channel posts yet.';
+
+  return `CONNECTED SOCIAL MEDIA PROFILE(S) (Use this authentic profile identity, niche, and bio):
+${accountSummary}
+
+RECENT CHANNEL CONTENT & VOICE SAMPLES (Match this voice and avoid repeating recent topics):
+${contentSummary}`;
+}
+
 export async function runStructuredGeminiModule<T>(
   db: DbInstance,
   params: {

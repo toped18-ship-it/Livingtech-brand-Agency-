@@ -3,6 +3,8 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import type { DbInstance } from '../db/database';
 import { assertWorkspaceAccess, getUserBySessionToken, recordAuditLog } from '../services/authService';
+import { createWorkspaceFeatureGuard } from '../services/entitlementMiddleware';
+import type { FeatureKey } from '../../src/utils/planEntitlements';
 import {
   getImageGenerationCapabilities,
   listBrandAnalyses,
@@ -181,7 +183,17 @@ export function createPhase3Router(db: DbInstance): Router {
     const token = extractToken(req);
     if (!token) return res.status(401).json({ error: 'Authentication required.' });
     const user = getUserBySessionToken(db, token);
-    if (!user) return res.status(401).json({ error: 'Session expired or invalid.' });
+    if (!user) {
+      const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+      const secure = req.secure || forwardedProto === 'https' || process.env.NODE_ENV === 'production';
+      res.clearCookie('lt_session', {
+        httpOnly: true,
+        secure,
+        sameSite: secure ? 'none' : 'lax',
+        path: '/',
+      });
+      return res.status(401).json({ error: 'Session expired or invalid. Please sign in again.' });
+    }
     req.user = user;
     next();
   };
@@ -193,6 +205,41 @@ export function createPhase3Router(db: DbInstance): Router {
     }
     next();
   };
+
+  const requireFeature = (feature: FeatureKey) => createWorkspaceFeatureGuard(db, feature);
+
+  // Strict subscription package enforcement across Phase 3 endpoints
+  router.use('/workspaces/:wid/ai/brand-analysis', requireAuth, requireWorkspaceMember, requireFeature('ai_strategy'));
+  router.use('/workspaces/:wid/ai/audience-analysis', requireAuth, requireWorkspaceMember, requireFeature('ai_strategy'));
+  router.use('/workspaces/:wid/ai/strategies', requireAuth, requireWorkspaceMember, requireFeature('ai_strategy'));
+  router.use('/workspaces/:wid/ai/strategy-v3', requireAuth, requireWorkspaceMember, requireFeature('ai_strategy'));
+  router.use('/workspaces/:wid/ai/performance-recommendations', requireAuth, requireWorkspaceMember, requireFeature('ai_strategy'));
+
+  router.use('/workspaces/:wid/ai/generated-content', requireAuth, requireWorkspaceMember, requireFeature('ai_studio'));
+  router.use('/workspaces/:wid/ai/studio-generate', requireAuth, requireWorkspaceMember, requireFeature('ai_studio'));
+  router.use('/workspaces/:wid/ai/caption', requireAuth, requireWorkspaceMember, requireFeature('ai_studio'));
+  router.use('/workspaces/:wid/ai/hashtags', requireAuth, requireWorkspaceMember, requireFeature('ai_studio'));
+  router.use('/workspaces/:wid/ai/keywords', requireAuth, requireWorkspaceMember, requireFeature('ai_studio'));
+  router.use('/workspaces/:wid/ai/repurpose', requireAuth, requireWorkspaceMember, requireFeature('ai_studio'));
+  router.use('/workspaces/:wid/safety/check', requireAuth, requireWorkspaceMember, requireFeature('ai_studio'));
+
+  router.use('/workspaces/:wid/ai/graphic-capabilities', requireAuth, requireWorkspaceMember, requireFeature('graphic_designer'));
+  router.use('/workspaces/:wid/ai/graphics', requireAuth, requireWorkspaceMember, requireFeature('graphic_designer'));
+  router.use('/workspaces/:wid/ai/graphic-direction', requireAuth, requireWorkspaceMember, requireFeature('graphic_designer'));
+  router.use('/workspaces/:wid/ai/generate-image', requireAuth, requireWorkspaceMember, requireFeature('graphic_designer'));
+
+  router.use('/workspaces/:wid/ai/calendar-plan', requireAuth, requireWorkspaceMember, requireFeature('calendar'));
+  router.use('/workspaces/:wid/campaigns', requireAuth, requireWorkspaceMember, requireFeature('calendar'));
+  router.use('/workspaces/:wid/calendar', requireAuth, requireWorkspaceMember, requireFeature('calendar'));
+
+  // Calendar scheduling (POST /publishing-queue) is available from Basic+; Auto Publisher queue management requires Pro+
+  router.use('/workspaces/:wid/publishing-queue', requireAuth, requireWorkspaceMember, (req, res, next) => {
+    const required: FeatureKey = req.method === 'POST' && (req.path === '/' || req.path === '') ? 'calendar' : 'auto_publisher';
+    return requireFeature(required)(req, res, next);
+  });
+  router.use('/workspaces/:wid/publishing-history', requireAuth, requireWorkspaceMember, requireFeature('publishing_history'));
+  router.use('/workspaces/:wid/approvals', requireAuth, requireWorkspaceMember, requireFeature('publishing_history'));
+  router.use('/workspaces/:wid/engagement-messages', requireAuth, requireWorkspaceMember, requireFeature('engagement'));
 
   // ===========================================================================
   // 1. BRAND INTELLIGENCE PROFILE, DOCUMENTS & SAFETY POLICIES
@@ -1154,45 +1201,6 @@ export function createPhase3Router(db: DbInstance): Router {
   // ===========================================================================
   router.get('/workspaces/:wid/engagement-messages', requireAuth, requireWorkspaceMember, (req, res) => {
     const wid = String(req.params.wid);
-    const rows = db
-      .prepare(
-        `SELECT em.*, sa.account_name
-         FROM engagement_messages em
-         LEFT JOIN social_accounts sa ON sa.id = em.social_account_id
-         WHERE em.workspace_id = ?
-         ORDER BY em.created_at DESC LIMIT 80`
-      )
-      .all(wid) as Record<string, unknown>[];
-
-    // Seed workspace's engagement_messages from Phase 1 engagement_items once if empty
-    if (rows.length === 0) {
-      const legacyItems = db
-        .prepare('SELECT * FROM engagement_items WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 20')
-        .all(wid) as Record<string, unknown>[];
-      for (const item of legacyItems) {
-        const now = String(item.created_at || new Date().toISOString());
-        db.prepare(
-          `INSERT OR IGNORE INTO engagement_messages (
-            id, workspace_id, platform_key, message_type, author_name, author_handle,
-            content, sentiment, requires_escalation, status, sent_reply_text, is_demo, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'neutral', 0, ?, ?, ?, ?, ?)`
-        ).run(
-          String(item.id),
-          wid,
-          String(item.platform_key),
-          String(item.message_type),
-          String(item.author_name),
-          String(item.author_handle),
-          String(item.content),
-          String(item.status),
-          item.reply_text ? String(item.reply_text) : null,
-          Number(item.is_demo ?? 1),
-          now,
-          now
-        );
-      }
-    }
-
     const refreshed = db
       .prepare(
         `SELECT em.*, sa.account_name

@@ -473,27 +473,27 @@ export const AutoPublisherPage: React.FC = () => {
                   Connect social media accounts under Social Accounts to configure per-account Automatic vs. Approval modes and daily frequency caps.
                 </p>
               ) : (
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="space-y-3">
                   {accounts.map((acc) => {
                     const requireApproval = acc.publishingPreferences.requireApprovalBeforePublish;
                     return (
-                      <div key={acc.id} className="rounded-lg border border-slate-200 p-3 space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <div>
-                            <p className="text-xs font-bold text-slate-900">{acc.accountName}</p>
-                            <p className="text-[11px] text-slate-500">
+                      <div key={acc.id} className="rounded-lg border border-slate-200 p-3.5 space-y-2.5 overflow-hidden">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-bold text-slate-900">{acc.accountName}</p>
+                            <p className="truncate text-[11px] text-slate-500">
                               {acc.platformName} · {acc.accountHandle}
                             </p>
                           </div>
                           <span
-                            className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase ${
+                            className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-bold uppercase whitespace-nowrap ${
                               requireApproval ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
                             }`}
                           >
-                            {requireApproval ? 'Approval Required' : 'Automatic (Default)'}
+                            {requireApproval ? 'Approval Required' : 'Automatic'}
                           </span>
                         </div>
-                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs">
                           <label className="inline-flex items-center gap-1.5 cursor-pointer text-slate-700">
                             <input
                               type="checkbox"
@@ -508,7 +508,7 @@ export const AutoPublisherPage: React.FC = () => {
                             />
                             Require manual approval before publishing
                           </label>
-                          <span className="text-[11px] text-slate-500">
+                          <span className="shrink-0 text-[11px] text-slate-500">
                             Cap: {acc.publishingPreferences.dailyPostLimit}/day
                           </span>
                         </div>

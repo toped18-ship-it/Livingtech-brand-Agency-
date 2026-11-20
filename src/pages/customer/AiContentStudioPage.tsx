@@ -9,7 +9,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   Repeat2,
-  Film,
   Hash,
   FileText,
   Clock,
@@ -34,10 +33,9 @@ import type {
   RecurrenceType,
   RepurposedVariant,
   SocialAccountRecord,
-  VideoScriptPayload,
 } from '../../shared/api-contracts';
 
-type StudioTab = 'composer' | 'repurpose' | 'video' | 'tools';
+type StudioTab = 'composer' | 'repurpose' | 'tools';
 
 const CONTENT_TYPES: { value: ContentStudioType; label: string }[] = [
   { value: 'social_post', label: 'Social Media Post' },
@@ -52,8 +50,7 @@ const CONTENT_TYPES: { value: ContentStudioType; label: string }[] = [
   { value: 'campaign_content', label: 'Campaign Content' },
   { value: 'image_prompt', label: 'Image Prompt Concept' },
   { value: 'flyer_graphic', label: 'Flyer & Graphic Copy' },
-  { value: 'video_script', label: 'Video Script' },
-  { value: 'short_form_concept', label: 'Short-Form Video Concept' },
+  { value: 'short_form_concept', label: 'Short-Form Concept' },
 ];
 
 const PLATFORM_LABELS: Record<PlatformKey, string> = {
@@ -161,22 +158,6 @@ export const AiContentStudioPage: React.FC = () => {
   ]);
   const [repurposeVariants, setRepurposeVariants] = useState<RepurposedVariant[]>([]);
   const [repurposing, setRepurposing] = useState(false);
-
-  // Video script tab
-  const [videoPlatform, setVideoPlatform] = useState<PlatformKey>('tiktok');
-  const [videoTopic, setVideoTopic] = useState('');
-  const [videoStyle, setVideoStyle] = useState<
-    'short_form_reel' | 'product_demo' | 'explainer' | 'founder_story' | 'youtube_video'
-  >('short_form_reel');
-  const [videoDuration, setVideoDuration] = useState(45);
-  const [videoResult, setVideoResult] = useState<{
-    title: string;
-    conceptSummary: string;
-    script: VideoScriptPayload;
-    captionIdea: string;
-    hashtags: string[];
-  } | null>(null);
-  const [generatingVideo, setGeneratingVideo] = useState(false);
 
   // Captions / Hashtags / Keywords tools tab
   const [toolPlatform, setToolPlatform] = useState<PlatformKey>('instagram');
@@ -477,33 +458,6 @@ export const AiContentStudioPage: React.FC = () => {
     }
   };
 
-  const handleGenerateVideo = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeWorkspace || !videoTopic.trim()) return;
-    setGeneratingVideo(true);
-    setBanner(null);
-    try {
-      const res = await apiClient.generateVideoScript(activeWorkspace.id, {
-        platformKey: videoPlatform,
-        topic: videoTopic.trim(),
-        formatStyle: videoStyle,
-        targetDurationSeconds: videoDuration,
-        toneOfVoice,
-        language,
-      });
-      setVideoResult(res);
-      setBanner({
-        type: 'success',
-        text: `Generated ${videoDuration}s video script (${res.creditsRemaining} credits remaining).`,
-      });
-      void refreshSession();
-    } catch (err) {
-      setBanner({ type: 'error', text: err instanceof Error ? err.message : 'Video script generation failed.' });
-    } finally {
-      setGeneratingVideo(false);
-    }
-  };
-
   const handleRunMicroTool = async (kind: 'caption' | 'hashtags' | 'keywords') => {
     if (!activeWorkspace || !toolSubject.trim()) return;
     setToolBusy(kind);
@@ -558,7 +512,7 @@ export const AiContentStudioPage: React.FC = () => {
         <div>
           <h2 className="font-display text-xl font-bold text-slate-900">AI Content Studio</h2>
           <p className="mt-1 text-xs text-slate-500">
-            Generate brand-grounded posts, multi-platform repurposed campaigns, timestamped video scripts, captions, hashtags, and keywords — with automated Content Safety verification.
+            Generate brand-grounded posts, multi-platform repurposed campaigns, captions, hashtags, and keywords — with automated Content Safety verification.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
@@ -566,7 +520,6 @@ export const AiContentStudioPage: React.FC = () => {
             [
               { id: 'composer', label: 'Post & Content Generator', icon: Sparkles },
               { id: 'repurpose', label: 'Multi-Platform Repurpose', icon: Repeat2 },
-              { id: 'video', label: 'Video Scripts', icon: Film },
               { id: 'tools', label: 'Captions, Hashtags & Keywords', icon: Hash },
             ] as const
           ).map((tab) => {
@@ -1213,151 +1166,7 @@ export const AiContentStudioPage: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 3: VIDEO SCRIPTS */}
-      {activeTab === 'video' && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-          <form
-            onSubmit={handleGenerateVideo}
-            className="lg:col-span-4 rounded-xl border border-slate-200 bg-white p-5 shadow-xs space-y-4"
-          >
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-slate-900">Video Script Generator</h3>
-              <span className="rounded bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
-                6 AI Credits
-              </span>
-            </div>
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-700">Platform</label>
-              <select
-                value={videoPlatform}
-                onChange={(e) => setVideoPlatform(e.target.value as PlatformKey)}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs"
-              >
-                <option value="tiktok">TikTok</option>
-                <option value="instagram">Instagram Reels</option>
-                <option value="youtube">YouTube / Shorts</option>
-                <option value="facebook">Facebook Reels</option>
-                <option value="linkedin">LinkedIn Video</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-700">Format Style</label>
-              <select
-                value={videoStyle}
-                onChange={(e) => setVideoStyle(e.target.value as typeof videoStyle)}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs"
-              >
-                <option value="short_form_reel">Short-Form Reel / TikTok</option>
-                <option value="product_demo">Product Showcase Demo</option>
-                <option value="explainer">Educational Explainer</option>
-                <option value="founder_story">Founder / Brand Story</option>
-                <option value="youtube_video">Long-Form YouTube Outline</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-700">
-                Target Duration ({videoDuration}s)
-              </label>
-              <input
-                type="range"
-                min={15}
-                max={180}
-                step={15}
-                value={videoDuration}
-                onChange={(e) => setVideoDuration(Number(e.target.value))}
-                className="mt-1 w-full"
-              />
-            </div>
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-700">Video Topic *</label>
-              <textarea
-                required
-                rows={4}
-                value={videoTopic}
-                onChange={(e) => setVideoTopic(e.target.value)}
-                placeholder="What product feature, customer lesson, or story should this video cover?"
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-xs"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={generatingVideo || !videoTopic.trim()}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
-            >
-              <Film className="h-4 w-4" />
-              {generatingVideo ? 'Writing Script...' : 'Generate Video Script'}
-            </button>
-          </form>
-
-          <div className="lg:col-span-8">
-            {!videoResult ? (
-              <div className="rounded-xl border border-slate-200 bg-white p-10 text-center">
-                <Film className="mx-auto h-8 w-8 text-slate-300" />
-                <p className="mt-2 text-sm font-semibold text-slate-800">Timestamped Production Script</p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Receive a 3-second opening hook, scene-by-scene visuals, voiceover lines, on-screen text, and B-roll checklist.
-                </p>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">{videoResult.title}</h3>
-                  <p className="mt-1 text-xs text-slate-600">{videoResult.conceptSummary}</p>
-                </div>
-                {videoResult.script.hook && (
-                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-                    <p className="text-[10px] font-bold uppercase text-blue-800">Opening Hook (0–3s)</p>
-                    <p className="mt-1 text-xs font-semibold text-blue-950">{videoResult.script.hook}</p>
-                  </div>
-                )}
-                {videoResult.script.scenes && videoResult.script.scenes.length > 0 && (
-                  <div className="overflow-x-auto rounded-lg border border-slate-200">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
-                        <tr>
-                          <th className="px-3 py-2">Time</th>
-                          <th className="px-3 py-2">Visual Shot</th>
-                          <th className="px-3 py-2">Voiceover / Script</th>
-                          <th className="px-3 py-2">On-Screen Text</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {videoResult.script.scenes.map((s, idx) => (
-                          <tr key={idx}>
-                            <td className="px-3 py-2 font-mono-tabular font-semibold text-blue-700 whitespace-nowrap">
-                              {s.timestamp}
-                            </td>
-                            <td className="px-3 py-2 text-slate-700">{s.visual}</td>
-                            <td className="px-3 py-2 text-slate-900">{s.voiceover}</td>
-                            <td className="px-3 py-2 font-medium text-slate-700">{s.onScreenText}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                {videoResult.script.bRollIdeas && videoResult.script.bRollIdeas.length > 0 && (
-                  <div>
-                    <p className="text-[11px] font-bold text-slate-700">B-Roll Checklist</p>
-                    <ul className="mt-1 list-disc pl-4 text-xs text-slate-600 space-y-0.5">
-                      {videoResult.script.bRollIdeas.map((b, i) => (
-                        <li key={i}>{b}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
-                  <p className="font-bold text-slate-800">Publishing Caption & Hashtags</p>
-                  <p className="mt-1 text-slate-700">{videoResult.captionIdea}</p>
-                  <p className="mt-1 font-medium text-blue-700">{videoResult.hashtags.join(' ')}</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 4: CAPTIONS, HASHTAGS & KEYWORDS */}
+      {/* TAB 3: CAPTIONS, HASHTAGS & KEYWORDS */}
       {activeTab === 'tools' && (
         <div className="space-y-5">
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">

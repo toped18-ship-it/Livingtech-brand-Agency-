@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { apiClient, setStoredToken } from '../lib/apiClient';
+import { apiClient, onSessionUnauthorized, setStoredToken } from '../lib/apiClient';
 import { signInWithGooglePopup, signOutFirebase } from '../lib/firebase';
 import type { UserProfile, WorkspaceSummary } from '../shared/api-contracts';
 
@@ -10,6 +10,8 @@ interface AuthContextValue {
   workspaces: WorkspaceSummary[];
   activeWorkspace: WorkspaceSummary | null;
   loading: boolean;
+  sessionNotice: string | null;
+  clearSessionNotice: () => void;
   setActiveWorkspaceId: (id: string) => void;
   refreshSession: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
@@ -39,6 +41,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   });
   const [loading, setLoading] = useState(true);
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
+
+  const clearSessionNotice = useCallback(() => setSessionNotice(null), []);
 
   const selectWorkspace = useCallback((list: WorkspaceSummary[], preferredId?: string | null) => {
     setWorkspaces(list);
@@ -59,6 +64,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const data = await apiClient.getMe();
       setUser(data.user);
+      setSessionNotice(null);
       if (data.token) setStoredToken(data.token);
       selectWorkspace(data.workspaces, activeWorkspaceId);
     } catch {
@@ -74,6 +80,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     void refreshSession();
   }, []);
 
+  useEffect(() => {
+    return onSessionUnauthorized(() => {
+      setStoredToken(null);
+      setUser(null);
+      setWorkspaces([]);
+      setActiveWorkspaceIdState(null);
+      setSessionNotice('Your previous session ended. Please sign in to continue.');
+    });
+  }, []);
+
   const setActiveWorkspaceId = useCallback((id: string) => {
     setActiveWorkspaceIdState(id);
     try {
@@ -87,6 +103,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const res = await apiClient.login({ email, password });
     setStoredToken(res.token);
     setUser(res.user);
+    setSessionNotice(null);
     selectWorkspace(res.workspaces);
   }, [selectWorkspace]);
 
@@ -101,6 +118,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await apiClient.register(input);
       setStoredToken(res.token);
       setUser(res.user);
+      setSessionNotice(null);
       selectWorkspace(res.workspaces);
       return { verificationToken: res.verificationToken };
     },
@@ -121,6 +139,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
     setStoredToken(res.token);
     setUser(res.user);
+    setSessionNotice(null);
     selectWorkspace(res.workspaces);
   }, [selectWorkspace]);
 
@@ -135,6 +154,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     setWorkspaces([]);
     setActiveWorkspaceIdState(null);
+    setSessionNotice(null);
   }, []);
 
   const updateWorkspacesState = useCallback(
@@ -154,6 +174,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         workspaces,
         activeWorkspace,
         loading,
+        sessionNotice,
+        clearSessionNotice,
         setActiveWorkspaceId,
         refreshSession,
         login,

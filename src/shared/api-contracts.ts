@@ -101,6 +101,18 @@ export interface BrandProfile {
   updatedAt: string;
 }
 
+export interface WorkspaceSubscriptionSummary {
+  planCode: PlanCode | 'none';
+  planName: string;
+  status: 'none' | 'trialing' | 'active' | 'past_due' | 'cancelled';
+  billingCycle: 'monthly' | 'annual';
+  currentPeriodEnd: string | null;
+  maxWorkspaces: number;
+  maxSocialAccounts: number;
+  maxTeamMembers: number;
+  monthlyAiCredits: number;
+}
+
 export interface WorkspaceSummary {
   id: string;
   organisationId: string;
@@ -113,6 +125,7 @@ export interface WorkspaceSummary {
   createdAt: string;
   updatedAt: string;
   brandProfile: BrandProfile;
+  subscription?: WorkspaceSubscriptionSummary;
 }
 
 export interface SocialPlatformInfo {
@@ -374,14 +387,18 @@ export interface WorkspaceSubscriptionRecord {
   workspaceId: string;
   workspaceName?: string;
   ownerEmail?: string;
-  planCode: PlanCode;
+  planCode: PlanCode | 'none';
   planName: string;
   monthlyPriceCents: number;
   monthlyAiCredits: number;
-  status: 'trialing' | 'active' | 'past_due' | 'cancelled';
+  maxWorkspaces?: number;
+  maxSocialAccounts?: number;
+  maxTeamMembers?: number;
+  status: 'none' | 'trialing' | 'active' | 'past_due' | 'cancelled';
   billingCycle: 'monthly' | 'annual';
   currentPeriodStart: string;
   currentPeriodEnd: string;
+  hasSubscription?: boolean;
 }
 
 export interface WorkspaceMemberRecord {

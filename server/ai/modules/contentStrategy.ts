@@ -2,7 +2,7 @@ import { Type } from '@google/genai';
 import crypto from 'node:crypto';
 import type { DbInstance } from '../../db/database';
 import type { AiContentStrategyRecord, PlatformKey } from '../../../src/shared/api-contracts';
-import { loadPermittedWorkspaceContext, runStructuredGeminiModule } from '../geminiClient';
+import { formatConnectedSocialContextForAi, loadPermittedWorkspaceContext, runStructuredGeminiModule } from '../geminiClient';
 
 export function mapStrategyRow(r: Record<string, unknown>): AiContentStrategyRecord {
   return {
@@ -33,6 +33,8 @@ export async function runContentStrategyModule(
 ): Promise<{ strategy: AiContentStrategyRecord; creditsRemaining: number }> {
   const ctx = loadPermittedWorkspaceContext(db, params.workspaceId);
 
+  const socialContextBlock = formatConnectedSocialContextForAi(ctx);
+
   const prompt = `Build an executive, measurable 30-day multi-platform social media content strategy.
 STRICT INTEGRITY RULES:
 - Never promise guaranteed follower growth, viral reach, or guaranteed revenue.
@@ -46,7 +48,9 @@ Description: ${ctx.brand.businessDescription}
 Products/Services: ${ctx.brand.productsServices || 'Not specified'}
 Target Audience: ${ctx.brand.targetAudience}
 Primary Goals: ${params.goals}
-Target Platforms: ${params.platforms.join(', ')}`;
+Target Platforms: ${params.platforms.join(', ')}
+
+${socialContextBlock}`;
 
   const result = await runStructuredGeminiModule<{
     title: string;

@@ -29,10 +29,13 @@ export const AccountDiscoveryModal: React.FC<AccountDiscoveryModalProps> = ({
   onConfirm,
   onClose,
 }) => {
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>(() => {
+    const fresh = session.accounts.filter((a) => !a.alreadyConnected).map((a) => a.externalAccountId);
+    return fresh.length > 0 ? fresh : session.accounts.map((a) => a.externalAccountId);
+  });
 
   useEffect(() => {
-    // Pre-select all newly discovered accounts (or all if reconnecting)
+    // Sync selection when discovery session changes
     const fresh = session.accounts.filter((a) => !a.alreadyConnected).map((a) => a.externalAccountId);
     setSelectedIds(fresh.length > 0 ? fresh : session.accounts.map((a) => a.externalAccountId));
   }, [session]);
@@ -202,7 +205,7 @@ export const AccountDiscoveryModal: React.FC<AccountDiscoveryModalProps> = ({
               type="button"
               disabled={submitting || selectedIds.length === 0}
               onClick={() => void onConfirm(selectedIds)}
-              className="rounded-lg bg-blue-700 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-800 disabled:bg-slate-300 transition-colors"
+              className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:bg-blue-950/60 disabled:text-white/60 disabled:cursor-not-allowed transition-colors"
             >
               {submitting
                 ? 'Encrypting & Connecting...'

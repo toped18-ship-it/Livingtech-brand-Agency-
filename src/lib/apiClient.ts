@@ -86,6 +86,27 @@ export class ApiError extends Error {
   }
 }
 
+type UnauthorizedListener = (message: string) => void;
+const unauthorizedListeners = new Set<UnauthorizedListener>();
+
+export function onSessionUnauthorized(listener: UnauthorizedListener): () => void {
+  unauthorizedListeners.add(listener);
+  return () => {
+    unauthorizedListeners.delete(listener);
+  };
+}
+
+const PUBLIC_AUTH_PATHS = new Set([
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/auth/google-sync',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
+  '/api/auth/verify-email',
+  '/api/auth/recover',
+  '/api/auth/me',
+]);
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getStoredToken();
   const headers: Record<string, string> = {
@@ -104,10 +125,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new ApiError(
-      typeof data?.error === 'string' ? data.error : `Request failed (${response.status})`,
-      response.status
-    );
+    const errorMessage =
+      typeof data?.error === 'string' ? data.error : `Request failed (${response.status})`;
+
+    if (response.status === 401 && !PUBLIC_AUTH_PATHS.has(path)) {
+      setStoredToken(null);
+      unauthorizedListeners.forEach((listener) => listener(errorMessage));
+    }
+
+    throw new ApiError(errorMessage, response.status);
   }
   return data as T;
 }
@@ -237,24 +263,59 @@ export const apiClient = {
   getOAuthUrl: (wid: string, platform: PlatformKey, reconnectAccountId?: string) =>
     request<{
       configured: boolean;
+      mode?: 'sandbox' | 'live';
       url?: string;
       callbackUrl: string;
+      state?: string;
       missingEnvVars?: string[];
       portalName?: string;
       portalUrl?: string;
       docsUrl?: string;
       scopes?: string;
       supportsPkce?: boolean;
+      requestedPermissions?: {
+        scopeKey: string;
+        label: string;
+        description: string;
+        isRequired: boolean;
+      }[];
     }>(
       `/api/workspaces/${wid}/oauth/${platform}/url${
         reconnectAccountId ? `?reconnectAccountId=${encodeURIComponent(reconnectAccountId)}` : ''
       }`
     ),
+  authorizeSandboxOAuth: (
+    wid: string,
+    platform: PlatformKey,
+    state: string,
+    ownerProfile?: {
+      accountName?: string;
+      accountHandle?: string;
+      ownerEmail?: string;
+      businessCategory?: string;
+      accountDescription?: string;
+      followersCount?: number;
+      recentPosts?: string[];
+    }
+  ) =>
+    request<{
+      discoverySessionId: string;
+      platformKey: PlatformKey;
+      platformName: string;
+      accountCount: number;
+      permissionsStatus: string;
+      missingRequiredScopes: string[];
+    }>(`/api/workspaces/${wid}/oauth/${platform}/sandbox-authorize`, {
+      method: 'POST',
+      body: JSON.stringify({ state, ...(ownerProfile ? { ownerProfile } : {}) }),
+    }),
   getOAuthDiscoverySession: (wid: string, sessionId: string) =>
     request<OAuthDiscoverySession>(`/api/workspaces/${wid}/oauth/discovery/${sessionId}`),
   connectDiscoveredAccounts: (wid: string, sessionId: string, externalAccountIds: string[]) =>
     request<{
       connectedCount: number;
+      importedContentCount?: number;
+      aiContextReady?: boolean;
       accounts: { accountId: string; accountName: string; accountHandle: string }[];
     }>(`/api/workspaces/${wid}/oauth/discovery/${sessionId}/connect`, {
       method: 'POST',
@@ -452,10 +513,28 @@ export const apiClient = {
   getSubscription: (wid: string) =>
     request<WorkspaceSubscriptionRecord>(`/api/workspaces/${wid}/subscription`),
   changeSubscription: (wid: string, planCode: string, billingCycle: 'monthly' | 'annual') =>
-    request<{ success: boolean }>(`/api/workspaces/${wid}/subscription/change`, {
+    request<{ success: boolean; planCode: string; billingCycle: 'monthly' | 'annual'; subscription?: WorkspaceSubscriptionRecord }>(
+      `/api/workspaces/${wid}/subscription/change`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ planCode, billingCycle }),
+      }
+    ),
+  cancelSubscription: (wid: string) =>
+    request<{ success: boolean }>(`/api/workspaces/${wid}/subscription/cancel`, {
       method: 'POST',
-      body: JSON.stringify({ planCode, billingCycle }),
     }),
+  getBillingHistory: (wid: string) =>
+    request<
+      {
+        id: string;
+        action: string;
+        planCode: string;
+        billingCycle: string;
+        amountCents: number;
+        createdAt: string;
+      }[]
+    >(`/api/workspaces/${wid}/billing-history`),
   getMembers: (wid: string) => request<WorkspaceMemberRecord[]>(`/api/workspaces/${wid}/members`),
   inviteMember: (wid: string, email: string, role: 'workspace_admin' | 'editor' | 'viewer') =>
     request<{ id: string }>(`/api/workspaces/${wid}/members`, {
@@ -508,6 +587,7 @@ export const apiClient = {
     body: {
       isEnabled?: boolean;
       clientIdOverride?: string | null;
+      clientSecretOverride?: string | null;
       developerReviewStatus?: DeveloperReviewStatus;
       rateLimitRpm?: number;
       scopes?: string;

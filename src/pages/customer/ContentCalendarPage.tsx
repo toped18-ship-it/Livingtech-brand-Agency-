@@ -57,6 +57,26 @@ function defaultLocalDateTime(dateKey?: string): string {
   return `${base}T10:00`;
 }
 
+function getDefaultFormatForPlatform(platform: PlatformKey): PublishingFormatKey {
+  if (platform === 'instagram' || platform === 'pinterest') return 'image';
+  if (platform === 'tiktok' || platform === 'youtube') return 'video';
+  return 'text';
+}
+
+function platformRequiresMedia(platform: PlatformKey, format: PublishingFormatKey): boolean {
+  return (
+    platform === 'instagram' ||
+    platform === 'pinterest' ||
+    platform === 'tiktok' ||
+    platform === 'youtube' ||
+    format === 'image' ||
+    format === 'video' ||
+    format === 'reels' ||
+    format === 'carousel' ||
+    format === 'short_form_video'
+  );
+}
+
 export const ContentCalendarPage: React.FC = () => {
   const { activeWorkspace, refreshSession } = useAuth();
   const [viewMode, setViewMode] = useState<CalendarViewMode>('month');
@@ -268,6 +288,10 @@ export const ContentCalendarPage: React.FC = () => {
         .split(/[\n,]+/)
         .map((s) => s.trim())
         .filter(Boolean);
+      const parsedMediaUrls = sMediaUrl
+        .split(/[\n,]+/)
+        .map((u) => u.trim())
+        .filter(Boolean);
       const res = await apiClient.enqueuePublishingJob(activeWorkspace.id, {
         platformKey: sPlatform,
         socialAccountId: sAccountId || null,
@@ -276,7 +300,7 @@ export const ContentCalendarPage: React.FC = () => {
         title: sTitle.trim(),
         bodyText: sBody.trim(),
         hashtags: normalizeHashtags(sHashtags.split(/[\s,]+/).filter(Boolean)),
-        mediaUrls: sMediaUrl.trim() ? [sMediaUrl.trim()] : [],
+        mediaUrls: parsedMediaUrls,
         scheduledAt,
         timezone: sTimezone,
         recurrenceRule: {
@@ -700,7 +724,13 @@ export const ContentCalendarPage: React.FC = () => {
                 <label className="block text-[11px] font-semibold text-slate-700">Platform</label>
                 <select
                   value={sPlatform}
-                  onChange={(e) => setSPlatform(e.target.value as PlatformKey)}
+                  onChange={(e) => {
+                    const nextPlatform = e.target.value as PlatformKey;
+                    setSPlatform(nextPlatform);
+                    setSFormat(getDefaultFormatForPlatform(nextPlatform));
+                    const match = accounts.find((a) => a.platformKey === nextPlatform);
+                    setSAccountId(match?.id || '');
+                  }}
                   className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs"
                 >
                   {ALL_PLATFORM_KEYS.map((p) => (
@@ -794,12 +824,42 @@ export const ContentCalendarPage: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-semibold text-slate-700">Media URL (Required for Image/Video)</label>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="block text-[11px] font-semibold text-slate-700">
+                    Media URL {platformRequiresMedia(sPlatform, sFormat) ? '*' : '(Optional)'}
+                  </label>
+                  {platformRequiresMedia(sPlatform, sFormat) && !sMediaUrl.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const isVideo =
+                          sPlatform === 'youtube' ||
+                          sPlatform === 'tiktok' ||
+                          sFormat === 'video' ||
+                          sFormat === 'reels' ||
+                          sFormat === 'short_form_video';
+                        setSMediaUrl(
+                          isVideo
+                            ? 'https://cdn.livingtechbrandagency.com/media/brand-campaign-reel.mp4'
+                            : 'https://cdn.livingtechbrandagency.com/media/brand-campaign-visual.jpg'
+                        );
+                      }}
+                      className="text-[11px] font-semibold text-blue-600 hover:underline"
+                    >
+                      Attach Brand Asset URL
+                    </button>
+                  )}
+                </div>
                 <input
                   type="text"
+                  required={platformRequiresMedia(sPlatform, sFormat) && sMode !== 'draft'}
                   value={sMediaUrl}
                   onChange={(e) => setSMediaUrl(e.target.value)}
-                  placeholder="/generated/... or https://..."
+                  placeholder={
+                    sPlatform === 'youtube' || sPlatform === 'tiktok' || sFormat === 'video'
+                      ? 'https://.../video.mp4'
+                      : 'https://.../image.jpg'
+                  }
                   className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-xs"
                 />
               </div>

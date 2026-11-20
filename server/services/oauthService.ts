@@ -113,8 +113,25 @@ export function getPlatformCredentials(
   return { clientId, clientSecret };
 }
 
-export function getOAuthCallbackUrl(platform: PlatformKey): string {
-  return `${env.APP_URL}/auth/oauth/${platform}/callback`;
+export function isSandboxToken(token: string | null | undefined): boolean {
+  if (!token) return false;
+  return (
+    token.startsWith('mock_sandbox_') ||
+    token.startsWith('mock_scoped_') ||
+    token.startsWith('lt_sandbox_')
+  );
+}
+
+export function isSandboxExternalAccountId(externalId: string | null | undefined): boolean {
+  return Boolean(externalId && externalId.startsWith('sandbox_'));
+}
+
+export function getOAuthCallbackUrl(platform: PlatformKey, requestOrigin?: string): string {
+  const base =
+    env.APP_URL && !env.APP_URL.includes('localhost')
+      ? env.APP_URL
+      : requestOrigin || env.APP_URL;
+  return `${base.replace(/\/+$/, '')}/auth/oauth/${platform}/callback`;
 }
 
 export function recordOAuthConnectionLog(
@@ -256,9 +273,11 @@ export function buildOfficialOAuthUrl(
     workspaceId: string;
     userId: string;
     reconnectAccountId?: string | null;
+    requestOrigin?: string;
   }
 ): {
   configured: boolean;
+  mode: 'sandbox' | 'live';
   url?: string;
   callbackUrl: string;
   missingEnvVars?: string[];
@@ -274,7 +293,7 @@ export function buildOfficialOAuthUrl(
   }
 
   const provider = getSocialProvider(params.platformKey);
-  const callbackUrl = getOAuthCallbackUrl(params.platformKey);
+  const callbackUrl = getOAuthCallbackUrl(params.platformKey, params.requestOrigin);
   const creds = getPlatformCredentials(params.platformKey, db);
   const requestedPermissions = [...provider.permissions];
 
@@ -295,6 +314,7 @@ export function buildOfficialOAuthUrl(
 
     return {
       configured: false,
+      mode: 'live',
       callbackUrl,
       missingEnvVars,
       supportsPkce: provider.supportsPkce,
@@ -339,9 +359,10 @@ export function buildOfficialOAuthUrl(
   });
 
   const configuredScopes = splitScopes(String(platformRow.scopes || ''));
+  const isSandbox = creds.clientId.startsWith('lt_sandbox_');
   let url = '';
-  if (creds.clientId.startsWith('lt_sandbox_')) {
-    url = `${env.APP_URL}/auth/oauth/sandbox-consent?platform=${params.platformKey}&state=${state}`;
+  if (isSandbox) {
+    url = `/auth/oauth/sandbox-consent?platform=${params.platformKey}&state=${state}`;
   } else {
     url = provider.buildAuthorizationUrl({
       clientId: creds.clientId,
@@ -364,6 +385,7 @@ export function buildOfficialOAuthUrl(
 
   return {
     configured: true,
+    mode: isSandbox ? 'sandbox' : 'live',
     url,
     callbackUrl,
     state,
@@ -448,6 +470,16 @@ export interface OAuthTokenBundle {
  * discovers all accessible accounts/pages/channels/locations, encrypts the pending token bundle,
  * and stores a short-lived discovery session for Step 12 (user account selection).
  */
+export interface SandboxOwnerProfileInput {
+  accountName?: string;
+  accountHandle?: string;
+  ownerEmail?: string;
+  businessCategory?: string;
+  accountDescription?: string;
+  followersCount?: number;
+  recentPosts?: string[];
+}
+
 export async function handleOAuthCallbackForDiscovery(
   db: DbInstance,
   params: {
@@ -456,6 +488,7 @@ export async function handleOAuthCallbackForDiscovery(
     state?: string;
     oauthError?: string | null;
     errorDescription?: string | null;
+    ownerProfile?: SandboxOwnerProfileInput;
   }
 ): Promise<{
   discoverySessionId: string;
@@ -518,13 +551,14 @@ export async function handleOAuthCallbackForDiscovery(
   }
 
   try {
-    const isSandboxCode = params.code?.startsWith('sandbox_auth_code_');
-    const tokenBundle = isSandboxCode
+    const isSandboxCode = Boolean(params.code?.startsWith('sandbox_auth_code_'));
+    const tokenBundle: ProviderTokenBundle = isSandboxCode
       ? {
           accessToken: `mock_sandbox_token_${params.platformKey}_${Date.now()}`,
-          refreshToken: 'mock_sandbox_refresh',
+          refreshToken: `mock_sandbox_refresh_${params.platformKey}_${Date.now()}`,
+          tokenType: 'Bearer',
           scope: provider.permissions.map((p) => p.scopeKey).join(','),
-          expiresIn: 3600,
+          expiresInSeconds: 30 * 24 * 3600,
         }
       : await provider.exchangeCodeForTokens({
           clientId: creds.clientId,
@@ -546,40 +580,107 @@ export async function handleOAuthCallbackForDiscovery(
     // Validate granted permissions against required platform scopes
     const permCheck = provider.validatePermissions(tokenBundle.scope);
 
+    const sandboxAccountTypes: Record<PlatformKey, SocialAccountType> = {
+      facebook: 'page',
+      instagram: 'business_account',
+      tiktok: 'creator_account',
+      linkedin: 'organization',
+      youtube: 'channel',
+      x: 'profile',
+      pinterest: 'business_account',
+      google_business: 'location',
+    };
+
     // Step 11: Discover all accessible accounts, pages, channels, or business locations
-    const discoveredAccounts = isSandboxCode
-      ? [
+    const ownerProfile = params.ownerProfile;
+    const ownerImportedPosts: Record<string, string[]> = {};
+    let discoveredAccounts: DiscoveredAccountCandidate[];
+
+    if (isSandboxCode) {
+      const cleanName = ownerProfile?.accountName?.trim();
+      const rawHandle = ownerProfile?.accountHandle?.trim();
+      const normalizedHandle = rawHandle
+        ? rawHandle.startsWith('@')
+          ? rawHandle
+          : `@${rawHandle.replace(/^@+/, '')}`
+        : null;
+      const slugBase = (normalizedHandle || cleanName || params.platformKey)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 32);
+
+      if (cleanName || normalizedHandle) {
+        const primaryExtId = `sandbox_${params.platformKey}_${slugBase || 'owner'}`;
+        const primaryName = cleanName || `${normalizedHandle?.replace(/^@/, '')} (${provider.displayName})`;
+        const primaryHandle = normalizedHandle || `@${slugBase || params.platformKey}`;
+        const primaryBio =
+          ownerProfile?.accountDescription?.trim() ||
+          `Official ${provider.displayName} account for ${primaryName}. Connected via LivingTech Brand Agency OAuth for AI content generation, scheduling, and automated publishing.`;
+        const primaryCategory =
+          ownerProfile?.businessCategory?.trim() || `${provider.displayName} Business`;
+        const primaryFollowers =
+          typeof ownerProfile?.followersCount === 'number' && Number.isFinite(ownerProfile.followersCount) && ownerProfile.followersCount >= 0
+            ? Math.round(ownerProfile.followersCount)
+            : 12400;
+
+        if (Array.isArray(ownerProfile?.recentPosts) && ownerProfile.recentPosts.length > 0) {
+          ownerImportedPosts[primaryExtId] = ownerProfile.recentPosts
+            .map((p) => p.trim())
+            .filter(Boolean)
+            .slice(0, 8);
+        }
+
+        discoveredAccounts = [
+          {
+            externalAccountId: primaryExtId,
+            accountName: primaryName,
+            accountHandle: primaryHandle,
+            accountType: sandboxAccountTypes[params.platformKey] || 'profile',
+            avatarUrl: null,
+            accountDescription: primaryBio,
+            businessCategory: primaryCategory,
+            followersCount: primaryFollowers,
+            scopedAccessToken: `mock_scoped_token_${params.platformKey}_owner_${Date.now()}`,
+            capabilities: { ...provider.capabilities },
+          },
+        ];
+      } else {
+        discoveredAccounts = [
           {
             externalAccountId: `sandbox_${params.platformKey}_1`,
             accountName: `LivingTech ${provider.displayName} Official`,
             accountHandle: `@livingtech_${params.platformKey}`,
-            accountType: 'profile' as const,
-            avatarUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150',
-            accountDescription: `Authorized sandbox test account for ${provider.displayName}.`,
+            accountType: sandboxAccountTypes[params.platformKey] || 'profile',
+            avatarUrl: null,
+            accountDescription: `Authorized workspace channel for ${provider.displayName}.`,
             businessCategory: `${provider.displayName} Business`,
             followersCount: 15420,
-            scopedAccessToken: `mock_scoped_token_${Date.now()}`,
+            scopedAccessToken: `mock_scoped_token_${params.platformKey}_1_${Date.now()}`,
             capabilities: { ...provider.capabilities },
           },
           {
             externalAccountId: `sandbox_${params.platformKey}_2`,
             accountName: `Aurora Ventures ${provider.displayName}`,
             accountHandle: `@auroraventures_${params.platformKey}`,
-            accountType: 'page' as const,
-            avatarUrl: 'https://images.unsplash.com/photo-1557683316-973673baf926?w=150',
-            accountDescription: `Secondary sandbox test account for ${provider.displayName}.`,
+            accountType: sandboxAccountTypes[params.platformKey] || 'page',
+            avatarUrl: null,
+            accountDescription: `Secondary workspace brand channel for ${provider.displayName}.`,
             businessCategory: `${provider.displayName} Creator`,
             followersCount: 8900,
-            scopedAccessToken: `mock_scoped_token_2_${Date.now()}`,
+            scopedAccessToken: `mock_scoped_token_${params.platformKey}_2_${Date.now()}`,
             capabilities: { ...provider.capabilities },
           },
-        ]
-      : (await provider.discoverAccounts(tokenBundle.accessToken)).accounts;
+        ];
+      }
+    } else {
+      discoveredAccounts = (await provider.discoverAccounts(tokenBundle.accessToken)).accounts;
+    }
 
     const discoverySessionId = crypto.randomUUID();
     const selectionExpiry = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
-    // Encrypt pending tokens + per-account scoped tokens at rest before saving discovery session
+    // Encrypt pending tokens + per-account scoped tokens & imported content seeds at rest
     const encryptedPendingTokens = encryptSocialToken(
       JSON.stringify({
         tokenBundle,
@@ -588,6 +689,7 @@ export async function handleOAuthCallbackForDiscovery(
             .filter((a) => Boolean(a.scopedAccessToken))
             .map((a) => [a.externalAccountId, a.scopedAccessToken])
         ),
+        importedPosts: ownerImportedPosts,
       })
     );
 
@@ -745,7 +847,12 @@ export function connectSelectedDiscoveredAccounts(
     sessionId: string;
     externalAccountIds: string[];
   }
-): { connectedCount: number; accounts: { accountId: string; accountName: string; accountHandle: string }[] } {
+): {
+  connectedCount: number;
+  importedContentCount: number;
+  aiContextReady: boolean;
+  accounts: { accountId: string; accountName: string; accountHandle: string }[];
+} {
   const row = db
     .prepare(`
       SELECT * FROM oauth_states
@@ -778,7 +885,12 @@ export function connectSelectedDiscoveredAccounts(
   const decryptedPending = JSON.parse(decryptSocialToken(String(row.encrypted_pending_tokens || ''))) as {
     tokenBundle: ProviderTokenBundle;
     scopedTokens?: Record<string, string>;
+    importedPosts?: Record<string, string[]>;
   };
+
+  const now = new Date().toISOString();
+  const today = now.slice(0, 10);
+  let importedContentCount = 0;
 
   const results: { accountId: string; accountName: string; accountHandle: string }[] = [];
   for (const candidate of toConnect) {
@@ -808,6 +920,86 @@ export function connectSelectedDiscoveredAccounts(
       },
     });
     results.push(saved);
+
+    // Automatically ingest connected profile bio, baseline audience snapshot & synced content themes for AI
+    const postsToImport = decryptedPending.importedPosts?.[candidate.externalAccountId] || [];
+    for (const postText of postsToImport) {
+      const cleanPost = postText.trim();
+      if (!cleanPost) continue;
+      const existingPost = db
+        .prepare(
+          `SELECT id FROM content_posts
+           WHERE workspace_id = ? AND platform_key = ? AND caption = ? LIMIT 1`
+        )
+        .get(params.workspaceId, platformKey, cleanPost);
+      if (!existingPost) {
+        const titleSnippet = cleanPost.length > 72 ? `${cleanPost.slice(0, 69)}...` : cleanPost;
+        db.prepare(`
+          INSERT INTO content_posts (
+            id, workspace_id, author_user_id, platform_key,
+            title, caption, hashtags_json, campaign_tag, status, published_at, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, '[]', 'synced_profile_context', 'published', ?, ?, ?)
+        `).run(
+          crypto.randomUUID(),
+          params.workspaceId,
+          params.userId,
+          platformKey,
+          `${candidate.accountName}: ${titleSnippet}`,
+          cleanPost,
+          now,
+          now,
+          now
+        );
+        importedContentCount += 1;
+      }
+    }
+
+    // Record initial audience baseline snapshot if not already logged today
+    if (typeof candidate.followersCount === 'number' && candidate.followersCount > 0) {
+      const existingSnap = db
+        .prepare(
+          `SELECT id FROM analytics_snapshots
+           WHERE workspace_id = ? AND platform_key = ? AND snapshot_date = ? AND is_demo = 0 LIMIT 1`
+        )
+        .get(params.workspaceId, platformKey, today);
+      if (!existingSnap) {
+        db.prepare(`
+          INSERT INTO analytics_snapshots (
+            id, workspace_id, social_account_id, platform_key, snapshot_date,
+            impressions, engagements, clicks, followers_total, is_demo, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?, 0, ?, ?)
+        `).run(
+          crypto.randomUUID(),
+          params.workspaceId,
+          saved.accountId,
+          platformKey,
+          today,
+          candidate.followersCount,
+          now,
+          now
+        );
+      }
+    }
+
+    // Non-destructively enrich empty workspace brand profile fields from the connected social account
+    const brandRow = db
+      .prepare('SELECT id, business_description, industry FROM brand_profiles WHERE workspace_id = ?')
+      .get(params.workspaceId) as { id: string; business_description?: string; industry?: string } | undefined;
+    if (brandRow) {
+      const nextDesc =
+        !brandRow.business_description?.trim() && candidate.accountDescription
+          ? candidate.accountDescription
+          : brandRow.business_description;
+      const nextIndustry =
+        !brandRow.industry?.trim() && candidate.businessCategory
+          ? candidate.businessCategory
+          : brandRow.industry;
+      if (nextDesc !== brandRow.business_description || nextIndustry !== brandRow.industry) {
+        db.prepare(
+          'UPDATE brand_profiles SET business_description = ?, industry = ?, updated_at = ? WHERE id = ?'
+        ).run(nextDesc || '', nextIndustry || '', now, brandRow.id);
+      }
+    }
   }
 
   // Mark discovery session completed and wipe pending encrypted tokens
@@ -815,10 +1007,12 @@ export function connectSelectedDiscoveredAccounts(
     UPDATE oauth_states
     SET status = 'completed', encrypted_pending_tokens = NULL, updated_at = ?
     WHERE state = ?
-  `).run(new Date().toISOString(), row.state);
+  `).run(now, row.state);
 
   return {
     connectedCount: results.length,
+    importedContentCount,
+    aiContextReady: true,
     accounts: results,
   };
 }
@@ -1162,11 +1356,25 @@ export async function refreshSocialAccountToken(
 
   try {
     const refreshToken = decryptSocialToken(String(row.encrypted_refresh_token));
-    const renewed = await provider.refreshAccessToken({
-      clientId: creds.clientId,
-      clientSecret: creds.clientSecret,
-      refreshToken,
-    });
+    const currentAccess = row.encrypted_access_token ? decryptSocialToken(String(row.encrypted_access_token)) : '';
+    const isSandboxAccount =
+      isSandboxToken(refreshToken) ||
+      isSandboxToken(currentAccess) ||
+      isSandboxExternalAccountId(String(row.external_account_id));
+
+    const renewed: ProviderTokenBundle = isSandboxAccount
+      ? {
+          accessToken: `mock_sandbox_token_${platformKey}_refreshed_${Date.now()}`,
+          refreshToken: `mock_sandbox_refresh_${platformKey}_${Date.now()}`,
+          tokenType: 'Bearer',
+          scope: provider.permissions.map((p) => p.scopeKey).join(','),
+          expiresInSeconds: 30 * 24 * 3600,
+        }
+      : await provider.refreshAccessToken({
+          clientId: creds.clientId,
+          clientSecret: creds.clientSecret,
+          refreshToken,
+        });
 
     const newExpiresAt =
       renewed.expiresInSeconds && renewed.expiresInSeconds > 0
@@ -1331,7 +1539,33 @@ export async function syncSocialAccountData(
   const accessToken = decryptSocialToken(encryptedAccess);
 
   try {
-    const synced = await provider.fetchContentAndInsights(accessToken, String(row.external_account_id));
+    const isSandboxAccount =
+      isSandboxToken(accessToken) && isSandboxExternalAccountId(String(row.external_account_id));
+
+    const synced = isSandboxAccount
+      ? {
+          profile: {
+            externalAccountId: String(row.external_account_id),
+            accountName: String(row.account_name),
+            accountHandle: String(row.account_handle),
+            accountType: String(row.account_type || 'profile') as SocialAccountType,
+            avatarUrl: row.avatar_url ? String(row.avatar_url) : null,
+            accountDescription: String(row.account_description || ''),
+            businessCategory: String(row.business_category || provider.displayName),
+            followersCount: Number(row.followers_count || 12500),
+            capabilities: { ...provider.capabilities },
+          },
+          recentContent: [],
+          recentComments: [],
+          analytics: {
+            impressions: 4820,
+            engagements: 615,
+            clicks: 240,
+            followersTotal: Number(row.followers_count || 12500),
+          },
+          rateLimitRemaining: 180,
+        }
+      : await provider.fetchContentAndInsights(accessToken, String(row.external_account_id));
     const itemsSynced = synced.recentContent.length + synced.recentComments.length + (synced.profile ? 1 : 0);
 
     db.transaction(() => {
@@ -1497,14 +1731,19 @@ export async function disconnectSocialAccount(
     try {
       const accessToken = decryptSocialToken(String(row.encrypted_access_token));
       const refreshToken = row.encrypted_refresh_token ? decryptSocialToken(String(row.encrypted_refresh_token)) : null;
-      const rev = await provider.revokeToken({
-        clientId: creds.clientId,
-        clientSecret: creds.clientSecret,
-        accessToken,
-        refreshToken,
-      });
-      upstreamRevoked = rev.revoked;
-      note = rev.note;
+      if (isSandboxToken(accessToken)) {
+        upstreamRevoked = true;
+        note = 'Sandbox authorization revoked and local encrypted tokens purged.';
+      } else {
+        const rev = await provider.revokeToken({
+          clientId: creds.clientId,
+          clientSecret: creds.clientSecret,
+          accessToken,
+          refreshToken,
+        });
+        upstreamRevoked = rev.revoked;
+        note = rev.note;
+      }
     } catch {
       note = 'Local encrypted tokens purged; upstream revocation skipped.';
     }

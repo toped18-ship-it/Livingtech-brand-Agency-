@@ -1,9 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
 import { initDatabase } from './db/database';
 import { createExpressApp } from './app';
+import { loadOrCreateRuntimeSecrets } from './env';
 import {
   decryptSocialToken,
   encryptSocialToken,
@@ -82,7 +86,28 @@ test('Full Phase 1 security & lifecycle: registration, login, logout, password r
     assert.equal(regB.status, 201);
     const tokenB = regB.data.token as string;
 
-    // 5. Customer A creates a private post in Workspace A
+    // 5. Unsubscribed Customer A cannot create posts until subscribing; subscribe to Basic first
+    const unsubPost = await reqJson(srv.baseUrl, `/api/workspaces/${wsA}/posts`, {
+      method: 'POST',
+      token: tokenA,
+      body: {
+        title: 'Blocked Before Subscribe',
+        caption: 'Should be blocked without active plan.',
+        platformKey: 'linkedin',
+        status: 'draft',
+      },
+    });
+    assert.equal(unsubPost.status, 403);
+    assert.equal(unsubPost.data.code, 'SUBSCRIPTION_REQUIRED');
+
+    const subBasic = await reqJson(srv.baseUrl, `/api/workspaces/${wsA}/subscription/change`, {
+      method: 'POST',
+      token: tokenA,
+      body: { planCode: 'basic', billingCycle: 'monthly' },
+    });
+    assert.equal(subBasic.status, 200);
+
+    // Now Customer A creates a private post in Workspace A
     const postA = await reqJson(srv.baseUrl, `/api/workspaces/${wsA}/posts`, {
       method: 'POST',
       token: tokenA,
@@ -117,7 +142,7 @@ test('Full Phase 1 security & lifecycle: registration, login, logout, password r
 
     const adminOverview = await reqJson(srv.baseUrl, '/api/admin/overview', { token: adminToken });
     assert.equal(adminOverview.status, 200);
-    assert.ok(adminOverview.data.metrics.totalRegisteredUsers >= 4);
+    assert.equal(adminOverview.data.metrics.totalRegisteredUsers, 3); // Super-Admin + Customer A + Customer B (zero demo users!)
     assert.equal(adminOverview.data.metrics.totalConnectedSocialAccounts, 0); // Zero fake social accounts!
 
     // 9. Password Reset Flow for Customer A
@@ -183,6 +208,14 @@ test('OAuth 2.0 AES-256-GCM encryption, PKCE, workspace+user binding, zero token
     const tokenB = regB.data.token as string;
     const wsA = regA.data.workspaces[0].id as string;
     const userAId = regA.data.user.id as string;
+
+    // Activate Basic subscription for Workspace A
+    const subRes = await reqJson(srv.baseUrl, `/api/workspaces/${wsA}/subscription/change`, {
+      method: 'POST',
+      token: tokenA,
+      body: { planCode: 'basic', billingCycle: 'monthly' },
+    });
+    assert.equal(subRes.status, 200);
 
     // Persist an OAuth-authorized X (Twitter) account bound to wsA + userAId
     const persisted = persistOAuthSocialAccount(srv.db, {
@@ -271,6 +304,13 @@ test('AI Content Studio stored suggestions: list, edit & save, promote to calend
     const wsA = regA.data.workspaces[0].id as string;
     const userAId = regA.data.user.id as string;
 
+    const subA = await reqJson(srv.baseUrl, `/api/workspaces/${wsA}/subscription/change`, {
+      method: 'POST',
+      token: tokenA,
+      body: { planCode: 'basic', billingCycle: 'monthly' },
+    });
+    assert.equal(subA.status, 200);
+
     const suggestionId = crypto.randomUUID();
     const now = new Date().toISOString();
     srv.db.prepare(`
@@ -333,4 +373,154 @@ test('AI Content Studio stored suggestions: list, edit & save, promote to calend
     await srv.close();
   }
 });
+
+test('Runtime secrets persist stably across restarts and sessions survive DB reopen with strict logout revocation', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lt-session-test-'));
+  const secretFile = path.join(tmpDir, '.runtime-secrets.json');
+  const dbFile = path.join(tmpDir, 'test.db');
+
+  try {
+    // 1. Runtime secrets must remain identical across repeated server starts
+    const first = loadOrCreateRuntimeSecrets(secretFile);
+    const second = loadOrCreateRuntimeSecrets(secretFile);
+    assert.equal(first.sessionSecret, second.sessionSecret);
+    assert.equal(first.tokenEncryptionKey, second.tokenEncryptionKey);
+    assert.ok(first.sessionSecret.length >= 64);
+
+    // 2. Log in on Server Instance #1
+    const db1 = initDatabase(dbFile);
+    const app1 = createExpressApp(db1);
+    const srv1 = http.createServer(app1);
+    await new Promise<void>((resolve) => srv1.listen(0, '127.0.0.1', () => resolve()));
+    const port1 = (srv1.address() as { port: number }).port;
+    const baseUrl1 = `http://127.0.0.1:${port1}`;
+
+    const regPersist = await reqJson(baseUrl1, '/api/auth/register', {
+      method: 'POST',
+      body: {
+        email: 'persist-client@brandco.io',
+        password: 'PersistUser2026',
+        fullName: 'Persist Client',
+        workspaceName: 'Persist Workspace',
+      },
+    });
+    assert.equal(regPersist.status, 201);
+    const token = regPersist.data.token as string;
+    assert.ok(token.startsWith('lt1.'));
+
+    await new Promise<void>((resolve) => srv1.close(() => { db1.close(); resolve(); }));
+
+    // 3. Reopen DB on Server Instance #2 (simulating server restart) -> session MUST remain valid
+    const db2 = initDatabase(dbFile);
+    const app2 = createExpressApp(db2);
+    const srv2 = http.createServer(app2);
+    await new Promise<void>((resolve) => srv2.listen(0, '127.0.0.1', () => resolve()));
+    const port2 = (srv2.address() as { port: number }).port;
+    const baseUrl2 = `http://127.0.0.1:${port2}`;
+
+    const meAfterRestart = await reqJson(baseUrl2, '/api/auth/me', { token });
+    assert.equal(meAfterRestart.status, 200);
+    assert.equal(meAfterRestart.data.user.email, 'persist-client@brandco.io');
+
+    // 4. Logout still revokes session strictly
+    const logoutRes = await reqJson(baseUrl2, '/api/auth/logout', { method: 'POST', token });
+    assert.equal(logoutRes.status, 200);
+    const afterLogout = await reqJson(baseUrl2, '/api/auth/me', { token });
+    assert.equal(afterLogout.status, 401);
+
+    await new Promise<void>((resolve) => srv2.close(() => { db2.close(); resolve(); }));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('Strict Subscription Package Entitlements: Basic vs Pro vs Enterprise API enforcement and cancellation', async () => {
+  const srv = await startTestServer();
+  try {
+    const reg = await reqJson(srv.baseUrl, '/api/auth/register', {
+      method: 'POST',
+      body: {
+        email: 'tiers@agency.io',
+        password: 'TierUser2026',
+        fullName: 'Tier Owner',
+        workspaceName: 'Tier Brand',
+      },
+    });
+    assert.equal(reg.status, 201);
+    const token = reg.data.token as string;
+    const wid = reg.data.workspaces[0].id as string;
+
+    // 1. Fresh client starts with NO active subscription & zero demo records
+    const initialSub = await reqJson(srv.baseUrl, `/api/workspaces/${wid}/subscription`, { token });
+    assert.equal(initialSub.status, 200);
+    assert.equal(initialSub.data.status, 'none');
+    assert.equal(initialSub.data.planCode, 'none');
+
+    // All paid modules are locked before subscribing
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/social-accounts`, { token })).status, 403);
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/media`, { token })).status, 403);
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/analytics`, { token })).status, 403);
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/ai/graphics`, { token })).status, 403);
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/ai/strategies`, { token })).status, 403);
+
+    // 2. Subscribe to Basic -> unlocks Social Accounts, AI Studio, Calendar, Media; keeps Pro/Enterprise locked
+    const basicRes = await reqJson(srv.baseUrl, `/api/workspaces/${wid}/subscription/change`, {
+      method: 'POST',
+      token,
+      body: { planCode: 'basic', billingCycle: 'monthly' },
+    });
+    assert.equal(basicRes.status, 200);
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/social-accounts`, { token })).status, 200);
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/media`, { token })).status, 200);
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/calendar`, { token })).status, 200);
+
+    // Pro & Enterprise endpoints remain blocked on Basic
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/analytics`, { token })).status, 403);
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/ai/graphics`, { token })).status, 403);
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/publishing-queue`, { token })).status, 403);
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/engagement-messages`, { token })).status, 403);
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/members`, { token })).status, 403);
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/ai/strategies`, { token })).status, 403);
+
+    // 3. Upgrade to Pro -> unlocks Analytics, Graphic Designer, Auto Publisher, Engagement, Team; keeps Enterprise locked
+    const proRes = await reqJson(srv.baseUrl, `/api/workspaces/${wid}/subscription/change`, {
+      method: 'POST',
+      token,
+      body: { planCode: 'pro', billingCycle: 'annual' },
+    });
+    assert.equal(proRes.status, 200);
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/analytics`, { token })).status, 200);
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/ai/graphics`, { token })).status, 200);
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/publishing-queue`, { token })).status, 200);
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/engagement-messages`, { token })).status, 200);
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/members`, { token })).status, 200);
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/ai/strategies`, { token })).status, 403);
+
+    // 4. Upgrade to Enterprise -> unlocks AI Brand Strategy
+    const entRes = await reqJson(srv.baseUrl, `/api/workspaces/${wid}/subscription/change`, {
+      method: 'POST',
+      token,
+      body: { planCode: 'enterprise', billingCycle: 'monthly' },
+    });
+    assert.equal(entRes.status, 200);
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/ai/strategies`, { token })).status, 200);
+
+    // 5. Cancel subscription -> immediately re-locks paid features
+    const cancelRes = await reqJson(srv.baseUrl, `/api/workspaces/${wid}/subscription/cancel`, {
+      method: 'POST',
+      token,
+    });
+    assert.equal(cancelRes.status, 200);
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/social-accounts`, { token })).status, 403);
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/ai/strategies`, { token })).status, 403);
+
+    // Billing history reflects real subscription changes
+    const historyRes = await reqJson(srv.baseUrl, `/api/workspaces/${wid}/billing-history`, { token });
+    assert.equal(historyRes.status, 200);
+    assert.ok(historyRes.data.length >= 4);
+  } finally {
+    await srv.close();
+  }
+});
+
 

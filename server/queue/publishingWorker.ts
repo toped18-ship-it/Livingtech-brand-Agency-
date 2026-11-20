@@ -6,6 +6,8 @@ import { ProviderApiError } from '../integrations/httpClient';
 import type { PublishPayload, PublishResult } from '../integrations/types';
 import {
   decryptSocialToken,
+  isSandboxExternalAccountId,
+  isSandboxToken,
   parsePublishingPreferences,
   parseSocialAccountCapabilities,
   refreshSocialAccountToken,
@@ -823,16 +825,56 @@ export async function executePublishingQueueJob(
     };
 
     const provider = getSocialProvider(job.platformKey);
+    const externalAccountId = String(acc.external_account_id);
+    const isSandboxAccount = isSandboxToken(accessToken) && isSandboxExternalAccountId(externalAccountId);
+
+    const buildSandboxPermalink = (platformKey: PlatformKey, postId: string): string => {
+      switch (platformKey) {
+        case 'facebook':
+          return `https://www.facebook.com/livingtech/posts/${postId}`;
+        case 'instagram':
+          return `https://www.instagram.com/p/${postId}/`;
+        case 'tiktok':
+          return `https://www.tiktok.com/@livingtech_tiktok/video/${postId}`;
+        case 'linkedin':
+          return `https://www.linkedin.com/feed/update/urn:li:share:${postId}/`;
+        case 'youtube':
+          return `https://www.youtube.com/watch?v=${postId}`;
+        case 'x':
+          return `https://x.com/livingtech_x/status/${postId}`;
+        case 'pinterest':
+          return `https://www.pinterest.com/pin/${postId}/`;
+        case 'google_business':
+          return `https://business.google.com/posts/l/${postId}`;
+      }
+    };
+
     const publishResult: PublishResult = publishExecutorOverride
       ? await publishExecutorOverride({
           platformKey: job.platformKey,
           accessToken,
-          account: { externalAccountId: String(acc.external_account_id), capabilities },
+          account: { externalAccountId, capabilities },
           payload,
         })
+      : isSandboxAccount
+      ? (() => {
+          const externalPostId = `sandbox_${job.platformKey}_${crypto.randomBytes(6).toString('hex')}`;
+          return {
+            externalPostId,
+            permalink: buildSandboxPermalink(job.platformKey, externalPostId),
+            publishedAt: new Date().toISOString(),
+            raw: {
+              sandbox: true,
+              platform: job.platformKey,
+              format: job.formatKey,
+              externalAccountId,
+              title: job.title,
+            },
+          };
+        })()
       : await provider.publishContent(
           accessToken,
-          { externalAccountId: String(acc.external_account_id), capabilities },
+          { externalAccountId, capabilities },
           payload
         );
 

@@ -973,43 +973,61 @@ function seedReferenceData(db: DbInstance) {
     );
   }
 
-  // 3. Subscription Plans
+  // 3. Subscription Plans (aligned 1:1 with src/utils/planEntitlements.ts)
   const plans = [
     [
       'basic',
       'Basic',
-      'For solo founders and emerging digital brands',
+      'Essential brand publishing & AI content creation for solo founders',
       2900,
       29000,
       1,
       5,
-      2,
+      1,
       250,
-      ['1 Brand Workspace', 'Up to 5 Official Social Accounts', '250 Monthly AI Studio Credits', 'Content Calendar & Auto Publisher', 'Standard Analytics & Media Library'],
+      [
+        '1 Brand Workspace · Up to 5 Social Accounts',
+        '250 Monthly AI Studio Credits',
+        'Social Accounts & Official OAuth Connection',
+        'AI Content Studio (Posts, Repurpose, Captions & Hashtags)',
+        'Content Calendar & Media Library',
+      ],
     ],
     [
       'pro',
       'Pro',
-      'For growing marketing teams scaling multi-channel campaigns',
+      'Full creative, automation, engagement & analytics suite for growing teams',
       7900,
       79000,
       5,
       20,
       10,
       2000,
-      ['Up to 5 Brand Workspaces', 'Up to 20 Official Social Accounts', '2,000 Monthly AI Studio Credits', 'AI Content Strategy & Engagement Inbox', 'Role-Based Team Permissions & Priority Queue'],
+      [
+        'Up to 5 Brand Workspaces · Up to 20 Social Accounts',
+        '2,000 Monthly AI Credits · Up to 10 Team Seats',
+        'Everything in Basic Plan included',
+        'AI Graphic Designer & Auto Publisher Queue',
+        'Publishing History, Engagement Manager, Live Analytics & Team RBAC',
+      ],
     ],
     [
       'enterprise',
       'Enterprise',
-      'For global enterprises requiring custom governance and SLAs',
+      'Complete agency intelligence, AI Brand Strategy & multi-brand governance',
       29900,
       299000,
       50,
       250,
       35,
       15000,
-      ['50+ Isolated Tenant Workspaces', '250 Official Social Accounts', '15,000 Monthly AI Studio Credits', 'Custom OAuth Apps, SSO/SAML Readiness & Dedicated SLA', 'Full Compliance Audit Logs'],
+      [
+        'Up to 50 Brand Workspaces · Up to 250 Social Accounts',
+        '15,000 Monthly AI Credits · Up to 35 Team Seats',
+        'Everything in Pro Plan included',
+        'AI Brand Strategy & Executive Audience Intelligence',
+        'Multi-Brand Governance, Compliance Audit Logs & Priority Support',
+      ],
     ],
   ] as const;
 
@@ -1053,6 +1071,13 @@ function seedReferenceData(db: DbInstance) {
       features_json, is_active, created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
   `);
+  const updatePlan = db.prepare(`
+    UPDATE subscription_plans
+    SET name = ?, tagline = ?, monthly_price_cents = ?, annual_price_cents = ?,
+        max_workspaces = ?, max_social_accounts = ?, max_team_members = ?,
+        monthly_ai_credits = ?, features_json = ?, is_active = 1, updated_at = ?
+    WHERE code = ?
+  `);
   for (const p of plans) {
     insertPlan.run(
       crypto.randomUUID(),
@@ -1068,6 +1093,19 @@ function seedReferenceData(db: DbInstance) {
       JSON.stringify(p[9]),
       now,
       now
+    );
+    updatePlan.run(
+      p[1],
+      p[2],
+      p[3],
+      p[4],
+      p[5],
+      p[6],
+      p[7],
+      p[8],
+      JSON.stringify(p[9]),
+      now,
+      p[0]
     );
   }
 
@@ -1096,7 +1134,7 @@ function seedReferenceData(db: DbInstance) {
   const settings = [
     ['allow_new_registrations', 'true', 'Allow self-service customer registrations via email and OAuth'],
     ['require_email_verification', 'true', 'Require email verification before production auto-publishing'],
-    ['default_trial_ai_credits', '250', 'Initial AI credits allocated to each newly provisioned workspace'],
+    ['default_trial_ai_credits', '0', 'Initial AI credits allocated before subscribing to a package'],
     ['max_publishing_retries', '3', 'Automatic retry threshold before marking a publishing job as failed'],
     ['maintenance_mode', 'false', 'Temporarily restrict non-admin write operations during maintenance'],
     ['app_name', 'LIVINGTECH BRAND AGENCY', 'Global application name displayed in headers and titles'],
@@ -1114,18 +1152,68 @@ function seedReferenceData(db: DbInstance) {
     insertSetting.run(k, v, desc, now);
   }
 
-  // 5. Seed initial Super-Admin & Demo Workspace Account if users table is empty
+  // 5. Seed ONLY the clean Super-Admin account & workspace if users table is empty (ZERO demo accounts or sample data)
   const userCount = (db.prepare('SELECT COUNT(*) as c FROM users').get() as { c: number }).c;
   if (userCount === 0) {
     seedInitialAccounts(db, now);
+  }
+
+  // 6. One-time migration: purge all legacy seeded demo accounts, sample posts, sample media, and demo analytics/inbox items
+  const demoPurged = db
+    .prepare("SELECT value FROM system_settings WHERE key = 'clean_slate_demo_purge_v1'")
+    .get() as { value: string } | undefined;
+  if (!demoPurged) {
+    db.transaction(() => {
+      // Remove legacy seeded demo customer account & its entire isolated org/workspace tree
+      const demoUser = db
+        .prepare("SELECT id FROM users WHERE email = 'client@auroraventures.io'")
+        .get() as { id: string } | undefined;
+      if (demoUser) {
+        const demoWorkspaces = db
+          .prepare('SELECT id FROM workspaces WHERE owner_user_id = ?')
+          .all(demoUser.id) as { id: string }[];
+        for (const ws of demoWorkspaces) {
+          db.prepare('DELETE FROM workspaces WHERE id = ?').run(ws.id);
+        }
+        db.prepare('DELETE FROM organisations WHERE owner_user_id = ?').run(demoUser.id);
+        db.prepare('DELETE FROM users WHERE id = ?').run(demoUser.id);
+      }
+
+      // Remove any demo-flagged analytics & engagement rows
+      db.prepare('DELETE FROM analytics_snapshots WHERE is_demo = 1').run();
+      db.prepare('DELETE FROM engagement_items WHERE is_demo = 1').run();
+      db.prepare('DELETE FROM engagement_messages WHERE is_demo = 1').run();
+
+      // Remove legacy seeded sample posts, jobs, media, and notifications from the HQ workspace
+      db.prepare(`
+        DELETE FROM content_posts
+        WHERE title IN (
+          'Q4 Enterprise Brand Positioning Launch',
+          'Visual Identity System Spotlight',
+          'Executive Thread: AI-Assisted Content Velocity'
+        )
+      `).run();
+      db.prepare(`
+        DELETE FROM media_library
+        WHERE file_name = 'livingtech-primary-logo.jpg' AND folder = 'Brand Kit'
+      `).run();
+      db.prepare(`
+        DELETE FROM notifications
+        WHERE title IN ('Workspace Provisioned', 'Connect Official Social Channels')
+      `).run();
+
+      db.prepare(`
+        INSERT OR REPLACE INTO system_settings (key, value, description, updated_at)
+        VALUES ('clean_slate_demo_purge_v1', 'true', 'One-time purge of legacy demo accounts and sample data', ?)
+      `).run(now);
+    })();
   }
 }
 
 function seedInitialAccounts(db: DbInstance, now: string) {
   const enterprisePlan = db.prepare("SELECT id FROM subscription_plans WHERE code = 'enterprise'").get() as { id: string };
-  const proPlan = db.prepare("SELECT id FROM subscription_plans WHERE code = 'pro'").get() as { id: string };
 
-  // Super Admin Account (matches runtime user email)
+  // Super Admin Account only (clean workspace with zero demo posts, media, or accounts)
   const adminId = crypto.randomUUID();
   db.prepare(`
     INSERT INTO users (id, auth_provider, email, password_hash, full_name, role_slug, email_verified, status, timezone, preferred_language, created_at, updated_at)
@@ -1141,7 +1229,7 @@ function seedInitialAccounts(db: DbInstance, now: string) {
 
   db.prepare(`
     INSERT INTO workspaces (id, organisation_id, owner_user_id, name, slug, timezone, preferred_language, ai_credits_balance, created_at, updated_at)
-    VALUES (?, ?, ?, 'LivingTech Global Brand', 'livingtech-global', 'UTC', 'en', 5000, ?, ?)
+    VALUES (?, ?, ?, 'LivingTech Global Brand', 'livingtech-global', 'UTC', 'en', 15000, ?, ?)
   `).run(adminWsId, adminOrgId, adminId, now, now);
 
   db.prepare(`
@@ -1159,104 +1247,18 @@ function seedInitialAccounts(db: DbInstance, now: string) {
     VALUES (?, ?, ?, 'livingstoneedu64@gmail.com', 'workspace_admin', 'active', ?, ?, ?)
   `).run(crypto.randomUUID(), adminWsId, adminId, adminId, now, now);
 
-  const periodEnd = new Date(Date.now() + 30 * 86400 * 1000).toISOString();
+  const periodEnd = new Date(Date.now() + 365 * 86400 * 1000).toISOString();
   db.prepare(`
     INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
     VALUES (?, ?, ?, ?, 'active', 'annual', ?, ?, ?, ?)
   `).run(crypto.randomUUID(), adminOrgId, adminWsId, enterprisePlan.id, now, periodEnd, now, now);
 
-  // Seed realistic workspace drafts/scheduled posts (ZERO fake social connections!)
-  const post1Id = crypto.randomUUID();
-  const post2Id = crypto.randomUUID();
-  const post3Id = crypto.randomUUID();
-  const tomorrow = new Date(Date.now() + 86400 * 1000).toISOString();
-  const nextWeek = new Date(Date.now() + 4 * 86400 * 1000).toISOString();
-
-  db.prepare(`
-    INSERT INTO content_posts (id, workspace_id, author_user_id, title, caption, platform_key, status, campaign_tag, hashtags_json, scheduled_for, created_at, updated_at)
-    VALUES
-      (?, ?, ?, 'Q4 Enterprise Brand Positioning Launch', 'Building brands that command international trust requires consistent storytelling across every digital touchpoint. Discover our Phase 1 Brand Operating System.', 'linkedin', 'scheduled', 'Q4 Launch', '["#BrandStrategy","#EnterpriseSaaS","#LivingTech"]', ?, ?, ?),
-      (?, ?, ?, 'Visual Identity System Spotlight', 'From deep royal precision to cohesive typographic architecture — how modern tech leaders unify multi-market brand presence.', 'instagram', 'pending', 'Design Systems', '["#BrandIdentity","#CreativeDirection","#LivingTechAgency"]', ?, ?, ?),
-      (?, ?, ?, 'Executive Thread: AI-Assisted Content Velocity', 'Drafting high-converting campaigns starts with a strong brand voice blueprint. Here is our 5-pillar framework for enterprise social teams.', 'x', 'draft', 'Thought Leadership', '["#MarketingOps","#AIContent"]', NULL, ?, ?)
-  `).run(
-    post1Id, adminWsId, adminId, tomorrow, now, now,
-    post2Id, adminWsId, adminId, nextWeek, now, now,
-    post3Id, adminWsId, adminId, now, now
-  );
-
-  // Publishing job for scheduled post
-  const job1Id = crypto.randomUUID();
-  db.prepare(`
-    INSERT INTO publishing_jobs (id, workspace_id, content_post_id, platform_key, job_status, attempt_count, max_attempts, run_at, created_at, updated_at)
-    VALUES (?, ?, ?, 'linkedin', 'queued', 0, 3, ?, ?, ?)
-  `).run(job1Id, adminWsId, post1Id, tomorrow, now, now);
-
-  db.prepare(`
-    INSERT INTO publishing_logs (id, publishing_job_id, workspace_id, log_level, message, created_at, updated_at)
-    VALUES (?, ?, ?, 'info', 'Job queued and awaiting official LinkedIn OAuth connection before dispatch.', ?, ?)
-  `).run(crypto.randomUUID(), job1Id, adminWsId, now, now);
-
-  // Media Library seed item (real uploaded logo asset!)
-  db.prepare(`
-    INSERT INTO media_library (id, workspace_id, uploaded_by, file_name, asset_type, mime_type, storage_path, public_url, file_size_bytes, folder, created_at, updated_at)
-    VALUES (?, ?, ?, 'livingtech-primary-logo.jpg', 'image', 'image/jpeg', '/public/assets/aistudio/20261112_184805_8a13799e.jpg', '/assets/aistudio/20261112_184805_8a13799e.jpg', 184320, 'Brand Kit', ?, ?)
-  `).run(crypto.randomUUID(), adminWsId, adminId, now, now);
-
-  // Initial notifications
-  db.prepare(`
-    INSERT INTO notifications (id, workspace_id, user_id, category, title, body, is_read, created_at, updated_at)
-    VALUES
-      (?, ?, ?, 'system', 'Workspace Provisioned', 'LIVINGTECH BRAND AGENCY workspace is active with 5,000 AI Studio credits.', 0, ?, ?),
-      (?, ?, ?, 'publishing', 'Connect Official Social Channels', 'Connect Meta, LinkedIn, X, TikTok, or YouTube via OAuth in Social Accounts to activate live publishing.', 0, ?, ?)
-  `).run(
-    crypto.randomUUID(), adminWsId, adminId, now, now,
-    crypto.randomUUID(), adminWsId, adminId, now, now
-  );
-
-  // Standard Customer Account (strictly isolated tenant for multi-tenant verification)
-  const custId = crypto.randomUUID();
-  db.prepare(`
-    INSERT INTO users (id, auth_provider, email, password_hash, full_name, role_slug, email_verified, status, timezone, preferred_language, created_at, updated_at)
-    VALUES (?, 'password', 'client@auroraventures.io', ?, 'Elena Vance', 'customer', 1, 'active', 'America/New_York', 'en', ?, ?)
-  `).run(custId, hashPassword('Client@LivingTech2026'), now, now);
-
-  const custOrgId = crypto.randomUUID();
-  const custWsId = crypto.randomUUID();
-  db.prepare(`
-    INSERT INTO organisations (id, owner_user_id, name, slug, billing_email, created_at, updated_at)
-    VALUES (?, ?, 'Aurora Ventures', 'aurora-ventures', 'client@auroraventures.io', ?, ?)
-  `).run(custOrgId, custId, now, now);
-
-  db.prepare(`
-    INSERT INTO workspaces (id, organisation_id, owner_user_id, name, slug, timezone, preferred_language, ai_credits_balance, created_at, updated_at)
-    VALUES (?, ?, ?, 'Aurora Consumer Tech', 'aurora-consumer-tech', 'America/New_York', 'en', 1200, ?, ?)
-  `).run(custWsId, custOrgId, custId, now, now);
-
-  db.prepare(`
-    INSERT INTO brand_profiles (
-      id, workspace_id, brand_name, logo_url, primary_color, secondary_color, accent_color,
-      business_description, industry, target_audience, tone_of_voice, preferred_language, timezone, created_at, updated_at
-    ) VALUES (?, ?, 'Aurora Ventures', '', '#1D4ED8', '#0F172A', '#0EA5E9',
-      'Clean energy hardware and smart-home technology portfolio.', 'CleanTech & Hardware',
-      'Sustainability-focused homeowners and enterprise builders', 'Clear, modern, and optimistic', 'en', 'America/New_York', ?, ?)
-  `).run(crypto.randomUUID(), custWsId, now, now);
-
-  db.prepare(`
-    INSERT INTO workspace_members (id, workspace_id, user_id, invited_email, role_slug, status, invited_by, created_at, updated_at)
-    VALUES (?, ?, ?, 'client@auroraventures.io', 'workspace_admin', 'active', ?, ?, ?)
-  `).run(crypto.randomUUID(), custWsId, custId, custId, now, now);
-
-  db.prepare(`
-    INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 'active', 'monthly', ?, ?, ?, ?)
-  `).run(crypto.randomUUID(), custOrgId, custWsId, proPlan.id, now, periodEnd, now, now);
-
   db.prepare(`
     INSERT INTO audit_logs (id, actor_user_id, actor_email, workspace_id, action, resource_type, resource_id, metadata_json, created_at, updated_at)
-    VALUES (?, ?, 'livingstoneedu64@gmail.com', ?, 'system.bootstrap', 'database', 'phase1', '{"tables":23,"rlsReady":true}', ?, ?)
+    VALUES (?, ?, 'livingstoneedu64@gmail.com', ?, 'system.bootstrap', 'database', 'production', '{"cleanSlate":true}', ?, ?)
   `).run(crypto.randomUUID(), adminId, adminWsId, now, now);
 
-  logger.info('Seeded initial LIVINGTECH BRAND AGENCY reference data');
+  logger.info('Initialized clean LIVINGTECH BRAND AGENCY super-admin workspace (zero demo data)');
 }
 
 let singletonDb: DbInstance | null = null;

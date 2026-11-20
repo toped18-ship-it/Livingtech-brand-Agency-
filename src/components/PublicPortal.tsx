@@ -9,6 +9,10 @@ import {
   KeyRound,
   RefreshCw,
   Building2,
+  ChevronLeft,
+  ChevronRight,
+  Pause,
+  Play,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSystemSettings } from '../context/SystemSettingsContext';
@@ -16,6 +20,53 @@ import { apiClient } from '../lib/apiClient';
 import { formatCurrencyCents, validatePasswordStrength } from '../utils/domain';
 import type { SubscriptionPlanRecord } from '../shared/api-contracts';
 import { PWAInstallButton } from './PWAControls';
+import heroYouthSocialImg from '../assets/images/hero_youth_social_1795195087773.jpg';
+import youthSocialCreatorImg from '../assets/images/youth_social_creator_1795195087616.jpg';
+import youthSocialTeamImg from '../assets/images/youth_social_team_1795195110132.jpg';
+import youthSocialMobileImg from '../assets/images/youth_social_mobile_1795195088985.jpg';
+
+interface ShowcaseSlide {
+  id: string;
+  image: string;
+  alt: string;
+  step: string;
+  category: string;
+  title: string;
+  description: string;
+}
+
+const HOMEPAGE_SLIDES: ShowcaseSlide[] = [
+  {
+    id: 'creator-studio',
+    image: youthSocialCreatorImg,
+    alt: 'Young content creator filming social media video with a smartphone and laptop in a bright studio',
+    step: '01',
+    category: 'Creator Production',
+    title: 'Studio-Grade Content Creation, Scheduled in Seconds',
+    description:
+      'Record short-form reels, craft brand-consistent captions in AI Content Studio, and schedule multi-channel campaigns from one clean workspace.',
+  },
+  {
+    id: 'team-collab',
+    image: youthSocialTeamImg,
+    alt: 'Three diverse young digital marketers smiling and reviewing social media campaigns on smartphones around a studio table',
+    step: '02',
+    category: 'Agency Collaboration',
+    title: 'Real-Time Team Workflows Across Every Client Brand',
+    description:
+      'Coordinate approvals, review visual feeds, and manage client social calendars together with role-based permissions and isolated tenant boundaries.',
+  },
+  {
+    id: 'mobile-publishing',
+    image: youthSocialMobileImg,
+    alt: 'Stylish young creative outdoors at twilight smiling while sharing social media content on a smartphone',
+    step: '03',
+    category: 'Mobile Publishing',
+    title: 'Engage Audiences and Publish Anywhere on the Move',
+    description:
+      'Track live campaign reach, respond faster to your community, and publish seamlessly across desktop and installable mobile PWA.',
+  },
+];
 
 export type PublicPage =
   | 'login'
@@ -33,7 +84,7 @@ interface PublicPortalProps {
 }
 
 export const PublicPortal: React.FC<PublicPortalProps> = ({ page, onNavigate }) => {
-  const { login, register, loginWithGoogle } = useAuth();
+  const { login, register, loginWithGoogle, sessionNotice, clearSessionNotice } = useAuth();
   const { settings } = useSystemSettings();
 
   // Auth form states
@@ -55,6 +106,11 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ page, onNavigate }) 
   const [plans, setPlans] = useState<SubscriptionPlanRecord[]>([]);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
 
+  // Homepage showcase slider states
+  const [activeSlide, setActiveSlide] = useState(0);
+  const [isSliderPaused, setIsSliderPaused] = useState(false);
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
+
   useEffect(() => {
     setError(null);
     setNotice(null);
@@ -62,6 +118,29 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ page, onNavigate }) 
       apiClient.getPlans().then(setPlans).catch(() => {});
     }
   }, [page, plans.length]);
+
+  useEffect(() => {
+    if (page !== 'login' || isSliderPaused) return;
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setActiveSlide((prev) => (prev + 1) % HOMEPAGE_SLIDES.length);
+    }, 5500);
+    return () => window.clearInterval(timer);
+  }, [page, isSliderPaused]);
+
+  const handlePrevSlide = () => {
+    setActiveSlide((prev) => (prev - 1 + HOMEPAGE_SLIDES.length) % HOMEPAGE_SLIDES.length);
+  };
+
+  const handleNextSlide = () => {
+    setActiveSlide((prev) => (prev + 1) % HOMEPAGE_SLIDES.length);
+  };
+
+  const markImageFailed = (key: string) => {
+    setFailedImages((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -265,72 +344,115 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ page, onNavigate }) 
       {/* Main Content */}
       <main className="flex-1">
         {isAuthSplit ? (
-          <div className="mx-auto grid max-w-6xl grid-cols-1 items-stretch gap-8 px-4 py-8 sm:px-6 lg:grid-cols-12 lg:py-12">
-            {/* Left Executive Brand Panel */}
-            <div className="lt-neon-hero flex flex-col justify-between rounded-2xl p-7 text-white lg:col-span-5 lg:p-9">
-              <div>
-                <div className="lt-logo-frame inline-flex h-16 w-60 items-center justify-center overflow-hidden rounded-xl bg-white px-2 shadow-sm">
-                  <img
-                    src={settings.app_logo_url || '/assets/aistudio/20261112_184805_8a13799e.jpg'}
-                    alt={`${settings.app_name || 'LIVINGTECH BRAND AGENCY'} official brand mark`}
-                    referrerPolicy="no-referrer"
-                    className="h-full w-full object-contain scale-[1.22]"
-                  />
-                </div>
-                <h1 className="mt-7 font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                  {settings.app_name || 'LIVINGTECH BRAND AGENCY'}
-                </h1>
-                <p className="mt-3 text-sm leading-relaxed text-blue-100/90">
-                  {settings.app_tagline || 'Manage multi-tenant client workspaces, generate brand-aligned campaigns in AI Content Studio, schedule publishing pipelines, and govern team access from one unified platform.'}
-                </p>
+          <>
+            <div className="mx-auto grid max-w-6xl grid-cols-1 items-stretch gap-8 px-4 py-8 sm:px-6 lg:grid-cols-12 lg:py-10">
+              {/* Left Executive Brand Hero Panel */}
+              <div className="lt-neon-hero flex flex-col justify-between rounded-2xl p-6 text-white lg:col-span-6 lg:p-8">
+                <div>
+                  <div className="lt-logo-frame inline-flex h-14 w-56 items-center justify-center overflow-hidden rounded-xl bg-white px-2 shadow-sm">
+                    <img
+                      src={settings.app_logo_url || '/assets/aistudio/20261112_184805_8a13799e.jpg'}
+                      alt={`${settings.app_name || 'LIVINGTECH BRAND AGENCY'} official brand mark`}
+                      referrerPolicy="no-referrer"
+                      className="h-full w-full object-contain scale-[1.22]"
+                    />
+                  </div>
+                  <h1 className="mt-5 font-display text-2xl font-bold tracking-tight text-white sm:text-3xl [text-wrap:balance]">
+                    {settings.app_name || 'LIVINGTECH BRAND AGENCY'}
+                  </h1>
+                  <p className="mt-2.5 text-sm leading-relaxed text-blue-100/95">
+                    {settings.app_tagline || 'Manage multi-tenant client workspaces, generate brand-aligned campaigns in AI Content Studio, schedule publishing pipelines, and govern team access from one unified platform.'}
+                  </p>
 
-                <div className="mt-8 space-y-4 border-t border-white/15 pt-6 text-sm text-blue-50">
-                  <div className="flex items-start gap-3">
-                    <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-                    <div>
-                      <p className="font-semibold text-white">Isolated Multi-Tenant Workspaces</p>
-                      <p className="text-xs text-blue-200/85">Dedicated brand profiles, color systems, team RBAC, and tenant data boundaries.</p>
+                  {/* Hero Youth Social Media Editorial Visual */}
+                  <figure className="relative mt-5 overflow-hidden rounded-xl border border-sky-400/30 bg-gradient-to-br from-[#0d2259] to-[#050e28] shadow-lg">
+                    <div className="aspect-[16/9] w-full overflow-hidden">
+                      {!failedImages.hero ? (
+                        <img
+                          src={heroYouthSocialImg}
+                          alt="Confident young creative engaging with social media on a smartphone in a modern studio"
+                          referrerPolicy="no-referrer"
+                          onError={() => markImageFailed('hero')}
+                          className="h-full w-full object-cover object-center"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center px-6 text-center text-sm font-medium text-white">
+                          Modern Social Media Command for Creators &amp; Brand Agencies
+                        </div>
+                      )}
+                    </div>
+                    <figcaption className="border-t border-sky-400/20 bg-[#08173d]/95 px-4 py-3 sm:pointer-events-none sm:absolute sm:inset-x-0 sm:bottom-0 sm:border-t-0 sm:bg-transparent sm:bg-gradient-to-t sm:from-[#050e28]/90 sm:via-[#050e28]/45 sm:to-transparent sm:pb-3.5 sm:pt-10">
+                      <p className="text-xs font-medium text-sky-200">
+                        Next-Generation Social Command · Multi-Channel Studio
+                      </p>
+                      <p className="mt-0.5 text-sm font-semibold text-white">
+                        Built for youth creators, modern brands, and digital teams
+                      </p>
+                    </figcaption>
+                  </figure>
+
+                  <div className="mt-6 space-y-3.5 border-t border-white/15 pt-5 text-sm text-blue-50">
+                    <div className="flex items-start gap-3">
+                      <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                      <div>
+                        <p className="font-semibold text-white">Isolated Multi-Tenant Workspaces</p>
+                        <p className="text-xs text-blue-100/90">Dedicated brand profiles, color systems, team RBAC, and tenant data boundaries.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
+                      <div>
+                        <p className="font-semibold text-white">Official OAuth &amp; Encrypted Token Vault</p>
+                        <p className="text-xs text-blue-100/90">Server-side OAuth architecture for Meta, LinkedIn, X, TikTok, and YouTube. Zero browser-exposed tokens.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <Lock className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
+                      <div>
+                        <p className="font-semibold text-white">PWA &amp; Android Ready</p>
+                        <p className="text-xs text-blue-100/90">Shared REST API contracts and responsive mobile shell engineered for web and mobile creators.</p>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3">
-                    <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
-                    <div>
-                      <p className="font-semibold text-white">Official OAuth & Encrypted Token Vault</p>
-                      <p className="text-xs text-blue-200/85">Server-side OAuth architecture for Meta, LinkedIn, X, TikTok, and YouTube. Zero browser-exposed tokens.</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Lock className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
-                    <div>
-                      <p className="font-semibold text-white">PWA & Android Capacitor Ready</p>
-                      <p className="text-xs text-blue-200/85">Shared REST API contracts and responsive mobile shell engineered for web and native Android builds.</p>
-                    </div>
+                </div>
+
+                <div className="mt-6 border-t border-white/15 pt-4 text-xs text-blue-100/85">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span>Multi-Tenant RBAC</span>
+                    <span aria-hidden="true">·</span>
+                    <span>AI Content Studio</span>
+                    <span aria-hidden="true">·</span>
+                    <span>Official Social OAuth</span>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-8 border-t border-white/15 pt-5 text-xs text-blue-200/80">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <span>Phase 1 Foundation</span>
-                  <span aria-hidden="true">·</span>
-                  <span>Multi-Tenant RBAC</span>
-                  <span aria-hidden="true">·</span>
-                  <span>23 Relational Tables</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Interactive Auth Card */}
-            <div className="lt-neon-card flex flex-col justify-center rounded-2xl p-6 sm:p-9 lg:col-span-7">
+              {/* Right Interactive Auth Card */}
+              <div className="lt-neon-card flex flex-col justify-center rounded-2xl p-6 sm:p-8 lg:col-span-6">
               {error && (
-                <div role="alert" className="mb-5 flex items-start gap-2.5 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
+                <div role="alert" className="mb-5 flex items-start gap-2.5 rounded-lg border border-rose-400/50 bg-rose-950/70 px-4 py-3 text-sm text-white">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-300" />
                   <span>{error}</span>
                 </div>
               )}
+              {!error && !notice && sessionNotice && page === 'login' && (
+                <div role="status" className="mb-5 flex items-start justify-between gap-2.5 rounded-lg border border-sky-400/40 bg-[#0d2259] px-4 py-3 text-sm text-white">
+                  <div className="flex items-start gap-2.5">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
+                    <span>{sessionNotice}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={clearSessionNotice}
+                    className="text-xs font-semibold text-sky-300 hover:underline shrink-0"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
               {notice && (
-                <div role="status" className="mb-5 flex items-start gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                <div role="status" className="mb-5 flex items-start gap-2.5 rounded-lg border border-emerald-400/50 bg-emerald-950/70 px-4 py-3 text-sm text-white">
+                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
                   <span>{notice}</span>
                 </div>
               )}
@@ -409,35 +531,6 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ page, onNavigate }) 
                     Continue with Google (Firebase Auth)
                   </button>
 
-                  {/* Phase 1 Evaluation Access Bar */}
-                  <div className="mt-6 border-t border-slate-200 pt-5">
-                    <p className="text-xs font-semibold text-slate-700">Phase 1 Seeded Accounts for Testing</p>
-                    <div className="mt-2.5 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEmail('livingstoneedu64@gmail.com');
-                          setPassword('Admin@LivingTech2026');
-                        }}
-                        className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left hover:border-blue-300 hover:bg-blue-50/40 transition-colors"
-                      >
-                        <div className="text-xs font-semibold text-slate-900">Super-Admin Account</div>
-                        <div className="font-mono-tabular text-[11px] text-slate-500 truncate">livingstoneedu64@gmail.com</div>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEmail('client@auroraventures.io');
-                          setPassword('Client@LivingTech2026');
-                        }}
-                        className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left hover:border-blue-300 hover:bg-blue-50/40 transition-colors"
-                      >
-                        <div className="text-xs font-semibold text-slate-900">Customer Tenant Account</div>
-                        <div className="font-mono-tabular text-[11px] text-slate-500 truncate">client@auroraventures.io</div>
-                      </button>
-                    </div>
-                  </div>
-
                   <div className="mt-6 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
                     <span>
                       New to LIVINGTECH?{' '}
@@ -456,7 +549,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ page, onNavigate }) 
                 <div>
                   <h2 className="font-display text-2xl font-bold text-slate-900">Create your brand workspace</h2>
                   <p className="mt-1.5 text-sm text-slate-600">
-                    Provision an isolated multi-tenant workspace with 250 trial AI credits and role-based team controls.
+                    Provision an isolated multi-tenant workspace and select a subscription package to unlock your brand tools.
                   </p>
 
                   <form onSubmit={handleRegister} className="mt-6 space-y-4">
@@ -737,7 +830,201 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ page, onNavigate }) 
               )}
             </div>
           </div>
-        ) : page === 'pricing' ? (
+
+          {/* Middle Section: Youth Social Media Showcase & Interactive Slide Carousel */}
+          {page === 'login' && (
+            <section
+              aria-labelledby="creator-showcase-heading"
+              className="mx-auto max-w-6xl px-4 pb-14 pt-2 sm:px-6"
+            >
+              <div className="border-t border-sky-400/20 pt-10">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                  <div className="max-w-2xl">
+                    <p className="text-xs font-semibold text-sky-300">
+                      Creator &amp; Brand Showcase · Live Campaign Workflows
+                    </p>
+                    <h2
+                      id="creator-showcase-heading"
+                      className="mt-1.5 font-display text-2xl font-bold tracking-tight text-white sm:text-3xl [text-wrap:balance]"
+                    >
+                      Where Youth Creators and Modern Brands Grow Together
+                    </h2>
+                    <p className="mt-2 text-sm leading-relaxed text-blue-100/90">
+                      Produce studio-grade stories, collaborate across agency teams, and publish on the move from one high-speed social media hub.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="mr-2 font-mono-tabular text-xs font-semibold text-sky-200">
+                      {HOMEPAGE_SLIDES[activeSlide].step} / 0{HOMEPAGE_SLIDES.length}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsSliderPaused((prev) => !prev)}
+                      aria-label={isSliderPaused ? 'Resume slideshow' : 'Pause slideshow'}
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-sky-400/30 bg-[#0b1f52] text-white transition-colors hover:border-sky-300 hover:bg-[#132e73] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+                    >
+                      {isSliderPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handlePrevSlide}
+                      aria-label="Previous slide"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-sky-400/30 bg-[#0b1f52] text-white transition-colors hover:border-sky-300 hover:bg-[#132e73] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+                    >
+                      <ChevronLeft className="h-5 w-5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleNextSlide}
+                      aria-label="Next slide"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-sky-400/30 bg-[#0b1f52] text-white transition-colors hover:border-sky-300 hover:bg-[#132e73] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+                    >
+                      <ChevronRight className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Main Interactive Slide Viewport */}
+                <div
+                  role="region"
+                  aria-roledescription="carousel"
+                  aria-label="Youth social media workflow slides"
+                  onMouseEnter={() => setIsSliderPaused(true)}
+                  onMouseLeave={() => setIsSliderPaused(false)}
+                  className="relative mt-6 overflow-hidden rounded-2xl border border-sky-400/30 bg-gradient-to-br from-[#0d2259] to-[#050e28] shadow-xl"
+                >
+                  <div className="relative aspect-[16/9] w-full sm:aspect-[21/9]">
+                    {HOMEPAGE_SLIDES.map((slide, index) => {
+                      const isActive = index === activeSlide;
+                      return (
+                        <div
+                          key={slide.id}
+                          aria-hidden={!isActive}
+                          className={`absolute inset-0 transition-opacity duration-500 motion-reduce:transition-none ${
+                            isActive ? 'z-10 opacity-100' : 'pointer-events-none z-0 opacity-0'
+                          }`}
+                        >
+                          {!failedImages[slide.id] ? (
+                            <img
+                              src={slide.image}
+                              alt={slide.alt}
+                              referrerPolicy="no-referrer"
+                              onError={() => markImageFailed(slide.id)}
+                              className="h-full w-full object-cover object-center"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#0d2259] to-[#050e28] p-8 text-center text-white">
+                              <span className="font-display text-xl font-bold">{slide.title}</span>
+                            </div>
+                          )}
+                          <div className="hidden sm:block sm:absolute sm:inset-0 sm:bg-gradient-to-t sm:from-[#050e28]/95 sm:via-[#050e28]/45 sm:to-transparent" />
+                          <div className="hidden sm:block sm:absolute sm:inset-x-0 sm:bottom-0 sm:p-8">
+                            <p className="text-xs font-semibold text-sky-300">
+                              {slide.step} · {slide.category}
+                            </p>
+                            <h3 className="mt-1 max-w-2xl font-display text-2xl font-bold text-white [text-wrap:balance]">
+                              {slide.title}
+                            </h3>
+                            <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-blue-100">
+                              {slide.description}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Mobile Caption Block (keeps photography 100% unobstructed on narrow screens) */}
+                  <div className="border-t border-sky-400/20 bg-[#08173d] p-4 sm:hidden">
+                    <p className="text-xs font-semibold text-sky-300">
+                      {HOMEPAGE_SLIDES[activeSlide].step} · {HOMEPAGE_SLIDES[activeSlide].category}
+                    </p>
+                    <h3 className="mt-1 font-display text-lg font-bold text-white [text-wrap:balance]">
+                      {HOMEPAGE_SLIDES[activeSlide].title}
+                    </h3>
+                    <p className="mt-1.5 text-xs leading-relaxed text-blue-100">
+                      {HOMEPAGE_SLIDES[activeSlide].description}
+                    </p>
+                  </div>
+
+                  {/* Slide Dot Indicators */}
+                  <div
+                    role="tablist"
+                    aria-label="Choose a showcase slide"
+                    className="flex items-center justify-between gap-4 border-t border-sky-400/20 bg-[#08173d]/95 px-5 py-3"
+                  >
+                    <div className="flex items-center gap-2">
+                      {HOMEPAGE_SLIDES.map((slide, index) => {
+                        const isActive = index === activeSlide;
+                        return (
+                          <button
+                            key={slide.id}
+                            type="button"
+                            role="tab"
+                            aria-selected={isActive}
+                            aria-label={`View slide ${index + 1}: ${slide.category}`}
+                            onClick={() => setActiveSlide(index)}
+                            className={`h-2.5 rounded-full transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 ${
+                              isActive ? 'w-9 bg-sky-400' : 'w-2.5 bg-white/35 hover:bg-white/60'
+                            }`}
+                          />
+                        );
+                      })}
+                    </div>
+                    <span className="text-xs font-medium text-blue-100/90 whitespace-nowrap">
+                      {HOMEPAGE_SLIDES[activeSlide].category}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Middle Gallery Strip — All 3 Youth Social Media Highlights */}
+                <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
+                  {HOMEPAGE_SLIDES.map((slide, index) => {
+                    const isActive = index === activeSlide;
+                    return (
+                      <button
+                        key={slide.id}
+                        type="button"
+                        onClick={() => setActiveSlide(index)}
+                        className={`group overflow-hidden rounded-xl border text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 ${
+                          isActive
+                            ? 'border-sky-400 bg-[#0d2259] ring-1 ring-sky-400/50'
+                            : 'border-sky-400/20 bg-[#091942]/85 hover:border-sky-400/50 hover:bg-[#0d2259]/90'
+                        }`}
+                      >
+                        <div className="relative aspect-[16/9] w-full overflow-hidden bg-[#050e28]">
+                          {!failedImages[slide.id] ? (
+                            <img
+                              src={slide.image}
+                              alt={slide.alt}
+                              referrerPolicy="no-referrer"
+                              onError={() => markImageFailed(slide.id)}
+                              className="h-full w-full object-cover object-center transition-transform duration-300 group-hover:scale-[1.03]"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center p-4 text-xs text-white">
+                              {slide.category}
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-4">
+                          <p className="text-xs font-semibold text-sky-300">
+                            {slide.step} · {slide.category}
+                          </p>
+                          <p className="mt-1 font-display text-sm font-bold text-white">
+                            {slide.title}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+          )}
+        </>
+      ) : page === 'pricing' ? (
           <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
             <div className="flex flex-col items-start justify-between gap-4 border-b border-slate-200 pb-6 md:flex-row md:items-end">
               <div>

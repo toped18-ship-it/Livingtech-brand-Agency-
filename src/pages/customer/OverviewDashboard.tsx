@@ -21,10 +21,13 @@ import {
   Compass,
   Image as ImageIcon,
   MessageSquare,
+  Lock,
+  CreditCard,
 } from 'lucide-react';
 import { apiClient } from '../../lib/apiClient';
 import { useAuth } from '../../context/AuthContext';
 import { useSystemSettings } from '../../context/SystemSettingsContext';
+import { canAccessRoute, getEffectivePlanTier, getRequiredPlanForRoute, getTierDisplayName } from '../../utils/planEntitlements';
 import type { CustomerDashboardData } from '../../shared/api-contracts';
 import type { CustomerRoute } from './types';
 
@@ -81,8 +84,34 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ onNavigate
     { label: 'Available AI Credits', value: m.availableAiCredits.toLocaleString(), note: 'AI Studio & Strategy', route: 'ai-studio' as CustomerRoute },
   ];
 
+  const currentTier = getEffectivePlanTier(activeWorkspace?.subscription);
+
   return (
     <div className="space-y-7">
+      {currentTier === 'none' && (
+        <section className="flex flex-col justify-between gap-4 rounded-2xl border border-amber-400/50 bg-amber-500/15 p-5 text-white sm:flex-row sm:items-center">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/25 text-amber-300">
+              <CreditCard className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="font-display text-base font-bold text-white">Activate a Subscription Package to Begin</h2>
+              <p className="mt-0.5 text-xs text-white/90">
+                Your workspace does not have an active subscription yet. Choose Basic, Pro, or Enterprise under Billing & Subscriptions to unlock your included tools.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate('billing')}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-500 transition-colors whitespace-nowrap shrink-0"
+          >
+            Choose Subscription Plan
+            <ArrowUpRight className="h-3.5 w-3.5" />
+          </button>
+        </section>
+      )}
+
       {/* Executive Workspace Hero + Quick Actions */}
       <section className="lt-neon-hero rounded-2xl p-6 text-white sm:p-7">
         <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-center">
@@ -161,13 +190,26 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ onNavigate
             { label: 'Inbox', icon: MessageSquare, route: 'engagement' as CustomerRoute, color: 'bg-teal-50 text-teal-700 border-teal-200' },
           ].map((svc) => {
             const Icon = svc.icon;
+            const unlocked = canAccessRoute(activeWorkspace?.subscription, svc.route);
+            const requiredTier = getRequiredPlanForRoute(svc.route);
             return (
               <button
                 key={svc.label}
                 type="button"
                 onClick={() => onNavigate(svc.route)}
-                className="lt-neon-card group flex flex-col items-center justify-center gap-2.5 rounded-2xl p-4 text-center min-h-[96px] hover:scale-105 transition-all"
+                className={`lt-neon-card group relative flex flex-col items-center justify-center gap-2.5 rounded-2xl p-4 text-center min-h-[96px] hover:scale-105 transition-all ${
+                  unlocked ? '' : 'opacity-75'
+                }`}
               >
+                {!unlocked && (
+                  <span
+                    title={`Requires ${requiredTier ? getTierDisplayName(requiredTier) : 'Subscription'} Plan`}
+                    className="absolute right-2 top-2 inline-flex items-center gap-0.5 rounded bg-amber-500/20 border border-amber-400/40 px-1.5 py-0.5 text-[9px] font-bold text-amber-300"
+                  >
+                    <Lock className="h-2.5 w-2.5" />
+                    {requiredTier === 'enterprise' ? 'Ent' : requiredTier === 'pro' ? 'Pro' : 'Basic'}
+                  </span>
+                )}
                 <div className={`flex h-12 w-12 items-center justify-center rounded-2xl border ${svc.color} shadow-xs group-hover:bg-blue-700 group-hover:text-white transition-colors`}>
                   <Icon className="h-6 w-6" />
                 </div>

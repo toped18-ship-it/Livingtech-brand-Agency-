@@ -8,6 +8,7 @@ import {
   confirmPasswordReset,
   createPasswordResetToken,
   getUserBySessionToken,
+  getWorkspaceSubscriptionSummary,
   listUserWorkspaces,
   loginWithPassword,
   mapUserRow,
@@ -17,6 +18,12 @@ import {
   syncFirebaseGoogleUser,
   verifyEmailWithToken,
 } from '../services/authService';
+import { createWorkspaceFeatureGuard } from '../services/entitlementMiddleware';
+import {
+  canAddSocialAccount,
+  canAddTeamMember,
+  type FeatureKey,
+} from '../../src/utils/planEntitlements';
 import {
   deleteAiSuggestion,
   generateAiContentPost,
@@ -29,6 +36,7 @@ import {
   connectSelectedDiscoveredAccounts,
   disconnectSocialAccount,
   getDiscoverySession,
+  handleOAuthCallbackForDiscovery,
   listAccountSyncLogs,
   listOAuthConnectionLogs,
   listSocialPlatforms,
@@ -76,22 +84,28 @@ function extractToken(req: Request): string | null {
   return cookieToken || null;
 }
 
-function setSessionCookie(res: Response, token: string) {
-  const isProd = process.env.NODE_ENV === 'production';
+function isHttpsRequest(req: Request): boolean {
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  return req.secure || forwardedProto === 'https' || process.env.NODE_ENV === 'production';
+}
+
+function setSessionCookie(req: Request, res: Response, token: string) {
+  const secure = isHttpsRequest(req);
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: isProd || true,
-    sameSite: 'none',
+    secure,
+    sameSite: secure ? 'none' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: '/',
   });
 }
 
-function clearSessionCookie(res: Response) {
+function clearSessionCookie(req: Request, res: Response) {
+  const secure = isHttpsRequest(req);
   res.clearCookie(SESSION_COOKIE, {
     httpOnly: true,
-    secure: true,
-    sameSite: 'none',
+    secure,
+    sameSite: secure ? 'none' : 'lax',
     path: '/',
   });
 }
@@ -118,6 +132,7 @@ export function createApiRouter(db: DbInstance): Router {
     }
     const user = getUserBySessionToken(db, token);
     if (!user) {
+      clearSessionCookie(req, res);
       return res.status(401).json({ error: 'Session expired or invalid. Please sign in again.' });
     }
     req.user = user;
@@ -139,6 +154,22 @@ export function createApiRouter(db: DbInstance): Router {
     }
     next();
   };
+
+  const requireFeature = (feature: FeatureKey) => createWorkspaceFeatureGuard(db, feature);
+
+  // Strict subscription package enforcement on workspace API endpoints
+  router.use('/workspaces/:wid/social-accounts', requireAuth, requireWorkspaceMember, requireFeature('social_accounts'));
+  router.use('/workspaces/:wid/oauth', requireAuth, requireWorkspaceMember, requireFeature('social_accounts'));
+  router.use('/workspaces/:wid/posts', requireAuth, requireWorkspaceMember, requireFeature('calendar'));
+  router.use('/workspaces/:wid/jobs', requireAuth, requireWorkspaceMember, requireFeature('auto_publisher'));
+  router.use('/workspaces/:wid/ai/generate-post', requireAuth, requireWorkspaceMember, requireFeature('ai_studio'));
+  router.use('/workspaces/:wid/ai/suggestions', requireAuth, requireWorkspaceMember, requireFeature('ai_studio'));
+  router.use('/workspaces/:wid/ai/generate-strategy', requireAuth, requireWorkspaceMember, requireFeature('ai_strategy'));
+  router.use('/workspaces/:wid/ai/strategies', requireAuth, requireWorkspaceMember, requireFeature('ai_strategy'));
+  router.use('/workspaces/:wid/engagements', requireAuth, requireWorkspaceMember, requireFeature('engagement'));
+  router.use('/workspaces/:wid/analytics', requireAuth, requireWorkspaceMember, requireFeature('analytics'));
+  router.use('/workspaces/:wid/media', requireAuth, requireWorkspaceMember, requireFeature('media'));
+  router.use('/workspaces/:wid/members', requireAuth, requireWorkspaceMember, requireFeature('team'));
 
   // ===========================================================================
   // HEALTH & PUBLIC CATALOG
@@ -194,7 +225,7 @@ export function createApiRouter(db: DbInstance): Router {
     try {
       const payload = RegisterSchema.parse(req.body);
       const result = registerUserWithWorkspace(db, payload);
-      setSessionCookie(res, result.token);
+      setSessionCookie(req, res, result.token);
       res.status(201).json(result);
     } catch (err) {
       handleRouteError(res, err, 400);
@@ -210,7 +241,7 @@ export function createApiRouter(db: DbInstance): Router {
     try {
       const payload = LoginSchema.parse(req.body);
       const result = loginWithPassword(db, payload.email, payload.password);
-      setSessionCookie(res, result.token);
+      setSessionCookie(req, res, result.token);
       res.json(result);
     } catch (err) {
       handleRouteError(res, err, 401);
@@ -229,7 +260,7 @@ export function createApiRouter(db: DbInstance): Router {
     try {
       const payload = GoogleSyncSchema.parse(req.body);
       const result = syncFirebaseGoogleUser(db, payload);
-      setSessionCookie(res, result.token);
+      setSessionCookie(req, res, result.token);
       res.json(result);
     } catch (err) {
       handleRouteError(res, err, 400);
@@ -239,7 +270,7 @@ export function createApiRouter(db: DbInstance): Router {
   router.post('/auth/logout', (req: AuthedRequest, res) => {
     const token = extractToken(req);
     if (token) revokeSession(db, token);
-    clearSessionCookie(res);
+    clearSessionCookie(req, res);
     res.json({ success: true });
   });
 
@@ -401,7 +432,7 @@ export function createApiRouter(db: DbInstance): Router {
           resourceId: req.user!.id,
         });
       })();
-      clearSessionCookie(res);
+      clearSessionCookie(req, res);
       res.json({ message: 'Your account has been deactivated and queued for permanent deletion.' });
     } catch (err) {
       handleRouteError(res, err, 400);
@@ -650,13 +681,46 @@ export function createApiRouter(db: DbInstance): Router {
       const wid = String(req.params.wid);
       const platformKey = PlatformKeySchema.parse(req.params.platform);
       const reconnectAccountId = req.query.reconnectAccountId ? String(req.query.reconnectAccountId) : null;
+      const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+      const proto = forwardedProto || req.protocol || 'http';
+      const host = req.get('host');
+      const requestOrigin = host ? `${proto}://${host}` : undefined;
       const result = buildOfficialOAuthUrl(db, {
         platformKey,
         workspaceId: wid,
         userId: req.user!.id,
         reconnectAccountId,
+        requestOrigin,
       });
       res.json(result);
+    } catch (err) {
+      handleRouteError(res, err, 400);
+    }
+  });
+
+  // Iframe-safe in-app channel authentication & authorization completion (never opens container routes in popups)
+  router.post('/workspaces/:wid/oauth/:platform/sandbox-authorize', requireAuth, requireWorkspaceMember, async (req: AuthedRequest, res) => {
+    try {
+      const platformKey = PlatformKeySchema.parse(req.params.platform);
+      const { state, ownerProfile } = z.object({
+        state: z.string().min(10).max(200),
+        ownerProfile: z.object({
+          accountName: z.string().max(120).optional(),
+          accountHandle: z.string().max(100).optional(),
+          ownerEmail: z.string().max(160).optional(),
+          businessCategory: z.string().max(120).optional(),
+          accountDescription: z.string().max(1200).optional(),
+          followersCount: z.number().int().min(0).max(500_000_000).optional(),
+          recentPosts: z.array(z.string().max(1200)).max(8).optional(),
+        }).optional(),
+      }).parse(req.body);
+      const discovery = await handleOAuthCallbackForDiscovery(db, {
+        platformKey,
+        state,
+        code: `sandbox_auth_code_${Date.now()}`,
+        ownerProfile,
+      });
+      res.json(discovery);
     } catch (err) {
       handleRouteError(res, err, 400);
     }
@@ -679,6 +743,17 @@ export function createApiRouter(db: DbInstance): Router {
       const { externalAccountIds } = z.object({
         externalAccountIds: z.array(z.string().min(1).max(200)).min(1).max(50),
       }).parse(req.body);
+
+      const sub = getWorkspaceSubscriptionSummary(db, wid);
+      const currentConnected = (
+        db
+          .prepare("SELECT COUNT(*) as c FROM social_accounts WHERE workspace_id = ? AND connection_status != 'disconnected'")
+          .get(wid) as { c: number }
+      ).c;
+      const quota = canAddSocialAccount(sub, currentConnected + externalAccountIds.length - 1);
+      if (!quota.allowed) {
+        return res.status(403).json({ error: quota.reason, code: 'PLAN_LIMIT_REACHED' });
+      }
 
       const result = connectSelectedDiscoveredAccounts(db, {
         workspaceId: wid,
@@ -1349,39 +1424,35 @@ export function createApiRouter(db: DbInstance): Router {
   // ===========================================================================
   router.get('/workspaces/:wid/subscription', requireAuth, requireWorkspaceMember, (req: AuthedRequest, res) => {
     const wid = String(req.params.wid);
-    let row = db.prepare(`
-      SELECT s.*, sp.code as plan_code, sp.name as plan_name, sp.monthly_price_cents, sp.monthly_ai_credits
+    const row = db.prepare(`
+      SELECT s.*, sp.code as plan_code, sp.name as plan_name, sp.monthly_price_cents, sp.monthly_ai_credits,
+             sp.max_workspaces, sp.max_social_accounts, sp.max_team_members
       FROM subscriptions s
       JOIN subscription_plans sp ON sp.id = s.plan_id
       WHERE s.workspace_id = ?
-      ORDER BY s.created_at DESC
+      ORDER BY s.updated_at DESC, s.created_at DESC
       LIMIT 1
     `).get(wid) as Record<string, unknown> | undefined;
 
     if (!row) {
-      const starterPlan = db.prepare("SELECT id FROM subscription_plans WHERE code = 'basic'").get() as { id: string } | undefined;
-      const ws = db.prepare('SELECT organisation_id FROM workspaces WHERE id = ?').get(wid) as { organisation_id: string } | undefined;
-      if (starterPlan && ws) {
-        const subId = crypto.randomUUID();
-        const now = new Date().toISOString();
-        const periodEnd = new Date(Date.now() + 30 * 86400 * 1000).toISOString();
-        db.prepare(`
-          INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
-          VALUES (?, ?, ?, ?, 'active', 'monthly', ?, ?, ?, ?)
-        `).run(subId, ws.organisation_id, wid, starterPlan.id, now, periodEnd, now, now);
-
-        row = db.prepare(`
-          SELECT s.*, sp.code as plan_code, sp.name as plan_name, sp.monthly_price_cents, sp.monthly_ai_credits
-          FROM subscriptions s
-          JOIN subscription_plans sp ON sp.id = s.plan_id
-          WHERE s.workspace_id = ?
-          ORDER BY s.created_at DESC
-          LIMIT 1
-        `).get(wid) as Record<string, unknown> | undefined;
-      }
+      return res.json({
+        id: '',
+        workspaceId: wid,
+        planCode: 'none',
+        planName: 'No Active Plan',
+        monthlyPriceCents: 0,
+        monthlyAiCredits: 0,
+        maxWorkspaces: 1,
+        maxSocialAccounts: 0,
+        maxTeamMembers: 1,
+        status: 'none',
+        billingCycle: 'monthly',
+        currentPeriodStart: '',
+        currentPeriodEnd: '',
+        hasSubscription: false,
+      });
     }
 
-    if (!row) return res.status(404).json({ error: 'No subscription found for workspace.' });
     res.json({
       id: String(row.id),
       workspaceId: String(row.workspace_id),
@@ -1389,10 +1460,14 @@ export function createApiRouter(db: DbInstance): Router {
       planName: String(row.plan_name),
       monthlyPriceCents: Number(row.monthly_price_cents),
       monthlyAiCredits: Number(row.monthly_ai_credits),
+      maxWorkspaces: Number(row.max_workspaces),
+      maxSocialAccounts: Number(row.max_social_accounts),
+      maxTeamMembers: Number(row.max_team_members),
       status: String(row.status),
       billingCycle: String(row.billing_cycle),
       currentPeriodStart: String(row.current_period_start),
       currentPeriodEnd: String(row.current_period_end),
+      hasSubscription: String(row.status) === 'active' || String(row.status) === 'trialing',
     });
   });
 
@@ -1406,15 +1481,30 @@ export function createApiRouter(db: DbInstance): Router {
       const plan = db.prepare('SELECT * FROM subscription_plans WHERE code = ?').get(planCode) as Record<string, unknown> | undefined;
       if (!plan) return res.status(404).json({ error: 'Plan not found.' });
 
+      const ws = db.prepare('SELECT organisation_id FROM workspaces WHERE id = ?').get(wid) as { organisation_id: string } | undefined;
+      if (!ws) return res.status(404).json({ error: 'Workspace not found.' });
+
       const now = new Date().toISOString();
       const nextPeriodEnd = new Date(Date.now() + (billingCycle === 'annual' ? 365 : 30) * 86400 * 1000).toISOString();
+      const amountCents = billingCycle === 'annual' ? Number(plan.annual_price_cents) : Number(plan.monthly_price_cents);
 
       db.transaction(() => {
-        db.prepare(`
-          UPDATE subscriptions
-          SET plan_id = ?, billing_cycle = ?, status = 'active', current_period_start = ?, current_period_end = ?, updated_at = ?
-          WHERE workspace_id = ?
-        `).run(plan.id, billingCycle, now, nextPeriodEnd, now, wid);
+        const existingSub = db
+          .prepare('SELECT id FROM subscriptions WHERE workspace_id = ? ORDER BY updated_at DESC, created_at DESC LIMIT 1')
+          .get(wid) as { id: string } | undefined;
+
+        if (existingSub) {
+          db.prepare(`
+            UPDATE subscriptions
+            SET plan_id = ?, billing_cycle = ?, status = 'active', current_period_start = ?, current_period_end = ?, updated_at = ?
+            WHERE id = ?
+          `).run(plan.id, billingCycle, now, nextPeriodEnd, now, existingSub.id);
+        } else {
+          db.prepare(`
+            INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
+          `).run(crypto.randomUUID(), ws.organisation_id, wid, plan.id, billingCycle, now, nextPeriodEnd, now, now);
+        }
 
         db.prepare('UPDATE workspaces SET ai_credits_balance = MAX(ai_credits_balance, ?), updated_at = ? WHERE id = ?').run(
           Number(plan.monthly_ai_credits), now, wid
@@ -1424,17 +1514,74 @@ export function createApiRouter(db: DbInstance): Router {
           actorUserId: req.user!.id,
           actorEmail: req.user!.email,
           workspaceId: wid,
-          action: 'billing.plan_changed',
+          action: existingSub ? 'billing.plan_changed' : 'billing.plan_subscribed',
           resourceType: 'subscription',
           resourceId: wid,
-          metadata: { planCode, billingCycle },
+          metadata: { planCode, planName: String(plan.name), billingCycle, amountCents },
         });
       })();
 
-      res.json({ success: true, planCode, billingCycle });
+      const updatedSub = getWorkspaceSubscriptionSummary(db, wid);
+      res.json({ success: true, planCode, billingCycle, subscription: updatedSub });
     } catch (err) {
       handleRouteError(res, err, 400);
     }
+  });
+
+  router.post('/workspaces/:wid/subscription/cancel', requireAuth, requireWorkspaceMember, (req: AuthedRequest, res) => {
+    try {
+      const wid = String(req.params.wid);
+      const now = new Date().toISOString();
+      const updated = db
+        .prepare("UPDATE subscriptions SET status = 'cancelled', updated_at = ? WHERE workspace_id = ?")
+        .run(now, wid);
+      if (updated.changes > 0) {
+        recordAuditLog(db, {
+          actorUserId: req.user!.id,
+          actorEmail: req.user!.email,
+          workspaceId: wid,
+          action: 'billing.plan_cancelled',
+          resourceType: 'subscription',
+          resourceId: wid,
+          metadata: { status: 'cancelled' },
+        });
+      }
+      res.json({ success: true });
+    } catch (err) {
+      handleRouteError(res, err, 400);
+    }
+  });
+
+  router.get('/workspaces/:wid/billing-history', requireAuth, requireWorkspaceMember, (req: AuthedRequest, res) => {
+    const wid = String(req.params.wid);
+    const rows = db
+      .prepare(`
+        SELECT id, action, metadata_json, created_at
+        FROM audit_logs
+        WHERE workspace_id = ? AND action IN ('billing.plan_subscribed', 'billing.plan_changed', 'billing.plan_cancelled')
+        ORDER BY created_at DESC
+        LIMIT 25
+      `)
+      .all(wid) as { id: string; action: string; metadata_json: string; created_at: string }[];
+
+    res.json(
+      rows.map((r) => {
+        let meta: Record<string, unknown> = {};
+        try {
+          meta = JSON.parse(r.metadata_json || '{}');
+        } catch {
+          meta = {};
+        }
+        return {
+          id: r.id,
+          action: r.action,
+          planCode: String(meta.planCode || ''),
+          billingCycle: String(meta.billingCycle || 'monthly'),
+          amountCents: Number(meta.amountCents || 0),
+          createdAt: r.created_at,
+        };
+      })
+    );
   });
 
   // ===========================================================================
@@ -1467,6 +1614,18 @@ export function createApiRouter(db: DbInstance): Router {
         email: z.string().email(),
         role: z.enum(['workspace_admin', 'editor', 'viewer']),
       }).parse(req.body);
+
+      const sub = getWorkspaceSubscriptionSummary(db, wid);
+      const currentMembers = (
+        db
+          .prepare("SELECT COUNT(*) as c FROM workspace_members WHERE workspace_id = ? AND status != 'revoked'")
+          .get(wid) as { c: number }
+      ).c;
+      const seatCheck = canAddTeamMember(sub, currentMembers);
+      if (!seatCheck.allowed) {
+        return res.status(403).json({ error: seatCheck.reason, code: 'PLAN_LIMIT_REACHED' });
+      }
+
       const normalized = email.trim().toLowerCase();
       const now = new Date().toISOString();
       const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(normalized) as { id: string } | undefined;
@@ -1752,6 +1911,7 @@ export function createApiRouter(db: DbInstance): Router {
       const payload = z.object({
         isEnabled: z.boolean().optional(),
         clientIdOverride: z.string().max(240).nullable().optional(),
+        clientSecretOverride: z.string().max(400).nullable().optional(),
         developerReviewStatus: z.enum(['not_submitted', 'pending_review', 'approved', 'action_required']).optional(),
         rateLimitRpm: z.number().int().min(10).max(10000).optional(),
         scopes: z.string().min(2).max(1000).optional(),
@@ -1771,6 +1931,14 @@ export function createApiRouter(db: DbInstance): Router {
         if (payload.clientIdOverride !== undefined) {
           const cleaned = payload.clientIdOverride ? payload.clientIdOverride.trim() : null;
           db.prepare('UPDATE social_platforms SET client_id_override = ?, updated_at = ? WHERE key = ?').run(
+            cleaned || null,
+            now,
+            platformKey
+          );
+        }
+        if (payload.clientSecretOverride !== undefined) {
+          const cleaned = payload.clientSecretOverride ? payload.clientSecretOverride.trim() : null;
+          db.prepare('UPDATE social_platforms SET client_secret_override = ?, updated_at = ? WHERE key = ?').run(
             cleaned || null,
             now,
             platformKey
