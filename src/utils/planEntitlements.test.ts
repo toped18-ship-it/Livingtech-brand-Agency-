@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  FREE_TRIAL_DAYS,
+  FREE_TRIAL_MS,
   canAccessFeature,
   canAccessRoute,
   canAddSocialAccount,
@@ -8,6 +10,9 @@ import {
   getEffectivePlanTier,
   getRequiredPlanForFeature,
   getRequiredPlanForRoute,
+  getTrialDaysRemaining,
+  isTrialActive,
+  isTrialExpired,
   listIncludedFeaturesForTier,
   listLockedFeaturesForTier,
   normalizePlanCode,
@@ -22,6 +27,36 @@ test('normalizePlanCode maps active and legacy codes accurately', () => {
   assert.equal(normalizePlanCode('enterprise'), 'enterprise');
   assert.equal(normalizePlanCode('none'), 'none');
   assert.equal(normalizePlanCode(undefined), 'none');
+});
+
+test('7-day free trial unlocks workspace during trial and locks everything after 7 days', () => {
+  const now = Date.parse('2026-06-01T12:00:00.000Z');
+  const activeTrial = {
+    planCode: 'basic' as const,
+    status: 'trialing' as const,
+    currentPeriodEnd: new Date(now + FREE_TRIAL_MS).toISOString(),
+  };
+
+  assert.equal(FREE_TRIAL_DAYS, 7);
+  assert.equal(isTrialActive(activeTrial, now), true);
+  assert.equal(isTrialExpired(activeTrial, now), false);
+  assert.equal(getTrialDaysRemaining(activeTrial, now), 7);
+  assert.equal(getEffectivePlanTier(activeTrial, now), 'basic');
+  assert.equal(canAccessFeature(activeTrial, 'social_accounts', now), true);
+  assert.equal(canAccessFeature(activeTrial, 'ai_studio', now), true);
+  assert.equal(canAccessRoute(activeTrial, 'calendar', now), true);
+
+  // One millisecond after trial end -> trial is expired and subscription is required
+  const afterSevenDays = now + FREE_TRIAL_MS + 1000;
+  assert.equal(isTrialActive(activeTrial, afterSevenDays), false);
+  assert.equal(isTrialExpired(activeTrial, afterSevenDays), true);
+  assert.equal(getTrialDaysRemaining(activeTrial, afterSevenDays), 0);
+  assert.equal(getEffectivePlanTier(activeTrial, afterSevenDays), 'none');
+  assert.equal(canAccessFeature(activeTrial, 'social_accounts', afterSevenDays), false);
+  assert.equal(canAccessFeature(activeTrial, 'ai_studio', afterSevenDays), false);
+  assert.equal(canAccessRoute(activeTrial, 'calendar', afterSevenDays), false);
+  assert.equal(canAccessRoute(activeTrial, 'billing', afterSevenDays), true);
+  assert.equal(canAccessRoute(activeTrial, 'overview', afterSevenDays), true);
 });
 
 test('unsubscribed or cancelled workspaces cannot access paid modules but can access billing & overview', () => {

@@ -1,5 +1,12 @@
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut, type Auth } from 'firebase/auth';
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut as firebaseSignOut,
+  type Auth,
+} from 'firebase/auth';
 import { getDatabase, ref, set, update, type Database } from 'firebase/database';
 import { getAnalytics, isSupported as isAnalyticsSupported, type Analytics } from 'firebase/analytics';
 import { LIVINGTECH_FIREBASE_CONFIG } from '../config/firebaseConfig';
@@ -115,6 +122,16 @@ export async function signInWithGooglePopup() {
   }
   const credential = await signInWithPopup(auth, googleAuthProvider);
   return credential.user;
+}
+
+export async function signInFirebaseEmailPassword(email: string, password: string): Promise<void> {
+  try {
+    const auth = getFirebaseAuth();
+    if (!auth) return;
+    await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+  } catch {
+    // Non-blocking: backend handles authoritative authentication & RTDB sync
+  }
 }
 
 export async function signOutFirebase() {

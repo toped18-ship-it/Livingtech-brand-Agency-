@@ -15,20 +15,27 @@ import {
   CheckCircle2,
   Sparkles,
   RefreshCw,
+  Clock,
 } from 'lucide-react';
 import { apiClient } from '../../lib/apiClient';
 import { useAuth } from '../../context/AuthContext';
+import { PENDING_CHECKOUT_PLAN_KEY } from '../../App';
+import { SubscriptionCheckoutModal } from '../../components/SubscriptionCheckoutModal';
 import { formatCurrencyCents } from '../../utils/domain';
 import {
   ORDERED_FEATURES,
   PLAN_RANK,
   getEffectivePlanTier,
   getTierDisplayName,
+  getTrialDaysRemaining,
+  isTrialActive,
+  isTrialExpired,
   normalizePlanCode,
   type PaidPlanTier,
 } from '../../utils/planEntitlements';
 import type {
   NotificationRecord,
+  SubscriptionPaymentDetails,
   SubscriptionPlanRecord,
   WorkspaceMemberRecord,
   WorkspaceSubscriptionRecord,
@@ -105,33 +112,61 @@ export const NotificationsPage: React.FC = () => {
 };
 
 export const BillingSubscriptionsPage: React.FC = () => {
-  const { activeWorkspace, refreshSession } = useAuth();
+  const { user, activeWorkspace, updateWorkspacesState, refreshSession } = useAuth();
   const [sub, setSub] = useState<WorkspaceSubscriptionRecord | null>(null);
   const [plans, setPlans] = useState<SubscriptionPlanRecord[]>([]);
   const [history, setHistory] = useState<
-    { id: string; action: string; planCode: string; billingCycle: string; amountCents: number; createdAt: string }[]
+    {
+      id: string;
+      action: string;
+      planCode: string;
+      billingCycle: string;
+      amountCents: number;
+      transactionId?: string;
+      paymentMethod?: string;
+      cardLast4?: string;
+      createdAt: string;
+    }[]
   >([]);
   const [cycle, setCycle] = useState<'monthly' | 'annual'>('monthly');
   const [loading, setLoading] = useState(true);
-  const [busyPlan, setBusyPlan] = useState<string | null>(null);
+  const [checkoutPlan, setCheckoutPlan] = useState<SubscriptionPlanRecord | null>(null);
+  const [checkoutSubmitting, setCheckoutSubmitting] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const load = async () => {
-    if (!activeWorkspace) return;
     setLoading(true);
     try {
-      const [plansRes, subRes, histRes] = await Promise.allSettled([
-        apiClient.getPlans(),
-        apiClient.getSubscription(activeWorkspace.id),
-        apiClient.getBillingHistory(activeWorkspace.id),
-      ]);
+      const plansPromise = apiClient.getPlans();
+      const subPromise = activeWorkspace ? apiClient.getSubscription(activeWorkspace.id) : Promise.resolve(null);
+      const histPromise = activeWorkspace ? apiClient.getBillingHistory(activeWorkspace.id) : Promise.resolve([]);
+
+      const [plansRes, subRes, histRes] = await Promise.allSettled([plansPromise, subPromise, histPromise]);
 
       if (plansRes.status === 'fulfilled') {
         setPlans(plansRes.value);
+        // If user clicked a specific plan from Pricing before navigating here, open checkout modal automatically
+        try {
+          const rawPending = sessionStorage.getItem(PENDING_CHECKOUT_PLAN_KEY);
+          if (rawPending) {
+            sessionStorage.removeItem(PENDING_CHECKOUT_PLAN_KEY);
+            const parsed = JSON.parse(rawPending) as { planCode?: string; billingCycle?: 'monthly' | 'annual' };
+            if (parsed.billingCycle === 'monthly' || parsed.billingCycle === 'annual') {
+              setCycle(parsed.billingCycle);
+            }
+            const matched = plansRes.value.find((p) => p.code === parsed.planCode);
+            if (matched) {
+              setCheckoutPlan(matched);
+            }
+          }
+        } catch {
+          // Ignore storage restrictions
+        }
       }
-      if (subRes.status === 'fulfilled') {
+      if (subRes.status === 'fulfilled' && subRes.value) {
         setSub(subRes.value);
         if (subRes.value.billingCycle === 'annual' || subRes.value.billingCycle === 'monthly') {
           setCycle(subRes.value.billingCycle);
@@ -154,33 +189,55 @@ export const BillingSubscriptionsPage: React.FC = () => {
     void load();
   }, [activeWorkspace?.id]);
 
-  const effectiveTier = getEffectivePlanTier(
-    sub
-      ? { planCode: sub.planCode, status: sub.status }
-      : activeWorkspace?.subscription
-  );
-  const hasActivePlan = effectiveTier !== 'none';
+  const currentSubObj = sub ?? activeWorkspace?.subscription ?? null;
+  const trialActive = isTrialActive(currentSubObj);
+  const trialExpired = isTrialExpired(currentSubObj);
+  const trialDaysLeft = getTrialDaysRemaining(currentSubObj);
+  const effectiveTier = getEffectivePlanTier(currentSubObj);
+  const hasPaidPlan = currentSubObj?.status === 'active' && effectiveTier !== 'none';
 
-  const handleSubscribe = async (plan: SubscriptionPlanRecord) => {
-    if (!activeWorkspace) return;
+  const handleOpenCheckout = (plan: SubscriptionPlanRecord) => {
     setNotice(null);
-    setBusyPlan(plan.code);
+    setCheckoutError(null);
     setConfirmCancel(false);
+    setCheckoutPlan(plan);
+  };
+
+  const handleCompletePayment = async (payload: {
+    planCode: string;
+    billingCycle: 'monthly' | 'annual';
+    payment: SubscriptionPaymentDetails;
+  }) => {
+    if (!activeWorkspace) {
+      setCheckoutError('No active workspace selected. Please refresh and try again.');
+      return;
+    }
+    setCheckoutSubmitting(true);
+    setCheckoutError(null);
     try {
-      await apiClient.changeSubscription(activeWorkspace.id, plan.code, cycle);
+      const res = await apiClient.changeSubscription(
+        activeWorkspace.id,
+        payload.planCode,
+        payload.billingCycle,
+        payload.payment
+      );
+      if (res.workspaces && res.workspaces.length > 0) {
+        updateWorkspacesState(res.workspaces, activeWorkspace.id);
+      } else {
+        await refreshSession();
+      }
+      const chosenPlan = plans.find((p) => p.code === payload.planCode);
+      setCheckoutPlan(null);
       await load();
-      await refreshSession();
+      const receiptNote = res.transactionId ? ` Receipt #${res.transactionId}.` : '';
       setNotice({
         type: 'success',
-        text: `Subscribed to the ${plan.name} Package (${cycle} billing). Your workspace modules and ${plan.monthlyAiCredits.toLocaleString()} AI credits are now active.`,
+        text: `Payment confirmed! Your workspace is now subscribed to the ${chosenPlan?.name || payload.planCode.toUpperCase()} Package (${payload.billingCycle} billing).${receiptNote}`,
       });
     } catch (err) {
-      setNotice({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Unable to activate subscription package.',
-      });
+      setCheckoutError(err instanceof Error ? err.message : 'Unable to process subscription payment.');
     } finally {
-      setBusyPlan(null);
+      setCheckoutSubmitting(false);
     }
   };
 
@@ -189,13 +246,17 @@ export const BillingSubscriptionsPage: React.FC = () => {
     setCancelling(true);
     setNotice(null);
     try {
-      await apiClient.cancelSubscription(activeWorkspace.id);
+      const res = await apiClient.cancelSubscription(activeWorkspace.id);
       setConfirmCancel(false);
+      if (res.workspaces && res.workspaces.length > 0) {
+        updateWorkspacesState(res.workspaces, activeWorkspace.id);
+      } else {
+        await refreshSession();
+      }
       await load();
-      await refreshSession();
       setNotice({
         type: 'success',
-        text: 'Subscription cancelled. Paid package modules are now locked until you subscribe to a package.',
+        text: 'Subscription cancelled. Paid package modules are now locked until you subscribe and complete payment.',
       });
     } catch (err) {
       setNotice({
@@ -211,9 +272,9 @@ export const BillingSubscriptionsPage: React.FC = () => {
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-3 border-b border-sky-400/20 pb-5 sm:flex-row sm:items-end">
         <div>
-          <h1 className="font-display text-2xl font-bold text-white">Billing & Subscriptions</h1>
+          <h1 className="font-display text-2xl font-bold text-white">Billing &amp; Subscriptions</h1>
           <p className="mt-1 text-sm text-white/85">
-            Subscribe to a workspace package to unlock its modules and AI credit quotas. Only features included in your subscribed package are accessible.
+            Every new workspace is free for 7 days. After 7 days, select a subscription package and complete payment to unlock your package modules.
           </p>
         </div>
         <div className="inline-flex items-center gap-1 rounded-lg border border-sky-400/30 bg-[#0b1f52] p-1 w-fit shrink-0">
@@ -256,21 +317,21 @@ export const BillingSubscriptionsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Current Subscription Summary Banner */}
+      {/* Current Subscription / 7-Day Free Trial Summary Banner */}
       <section className="lt-neon-hero rounded-2xl p-6 text-white">
-        {hasActivePlan && sub ? (
+        {hasPaidPlan && currentSubObj ? (
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div>
-              <p className="text-xs font-semibold text-sky-300">Active Workspace Subscription</p>
-              <h2 className="mt-1 font-display text-2xl font-bold text-white">{sub.planName} Package</h2>
+              <p className="text-xs font-semibold text-emerald-300">Active Paid Workspace Subscription</p>
+              <h2 className="mt-1 font-display text-2xl font-bold text-white">{currentSubObj.planName} Package</h2>
               <p className="mt-1 text-xs text-white/90">
-                Status: <span className="capitalize font-bold text-emerald-300">{sub.status}</span> · Billing:{' '}
-                <span className="capitalize font-semibold text-white">{sub.billingCycle}</span>
-                {sub.currentPeriodEnd && (
+                Status: <span className="capitalize font-bold text-emerald-300">{currentSubObj.status}</span> · Billing:{' '}
+                <span className="capitalize font-semibold text-white">{currentSubObj.billingCycle}</span>
+                {currentSubObj.currentPeriodEnd && (
                   <>
                     {' '}· Renews{' '}
                     <span className="font-mono-tabular font-semibold text-white">
-                      {new Date(sub.currentPeriodEnd).toLocaleDateString()}
+                      {new Date(currentSubObj.currentPeriodEnd).toLocaleDateString()}
                     </span>
                   </>
                 )}
@@ -313,19 +374,66 @@ export const BillingSubscriptionsPage: React.FC = () => {
               )}
             </div>
           </div>
+        ) : trialActive && currentSubObj ? (
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-sky-400/40 bg-sky-500/20 text-sky-300">
+                <Clock className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-sky-300">
+                  7-Day Free Trial Active · {trialDaysLeft} day{trialDaysLeft === 1 ? '' : 's'} remaining
+                </p>
+                <h2 className="mt-0.5 font-display text-xl font-bold text-white">
+                  Enjoy Full Workspace Access Free for 7 Days
+                </h2>
+                <p className="mt-1 text-xs text-white/90">
+                  Your free trial ends on{' '}
+                  <strong className="font-mono-tabular text-amber-300">
+                    {currentSubObj.trialEndsAt || currentSubObj.currentPeriodEnd
+                      ? new Date(currentSubObj.trialEndsAt || currentSubObj.currentPeriodEnd || '').toLocaleDateString()
+                      : '7 days from signup'}
+                  </strong>
+                  . After 7 days, a paid subscription is required to continue using your workspace tools. Choose a plan below to pay now and avoid interruption.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-4 shrink-0">
+              <div className="text-left sm:text-right">
+                <p className="text-xs text-white/80">Trial AI Credits</p>
+                <p className="font-mono-tabular text-2xl font-bold text-amber-300">
+                  {(activeWorkspace?.aiCreditsBalance ?? 0).toLocaleString()}
+                </p>
+              </div>
+              {plans.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => handleOpenCheckout(plans.find((p) => p.code === 'pro') || plans[0])}
+                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-500 transition-colors shadow-md"
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Upgrade &amp; Pay Now
+                </button>
+              )}
+            </div>
+          </div>
         ) : (
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-amber-400/40 bg-amber-500/20 text-amber-300">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-rose-400/40 bg-rose-500/20 text-rose-300">
                 <Lock className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-xs font-semibold text-amber-300">No Active Subscription</p>
+                <p className="text-xs font-bold text-amber-300">
+                  {trialExpired ? '7-Day Free Trial Ended · Subscription Required' : 'No Active Subscription'}
+                </p>
                 <h2 className="mt-0.5 font-display text-xl font-bold text-white">
-                  Choose a Subscription Package to Activate Your Workspace
+                  {trialExpired
+                    ? 'Your 7-Day Free Trial Has Expired — Subscribe & Pay to Continue'
+                    : 'Choose a Subscription Package to Activate Your Workspace'}
                 </h2>
                 <p className="mt-1 text-xs text-white/90">
-                  Select Basic, Pro, or Enterprise below. Only modules included in your chosen package will be unlocked for this workspace.
+                  Select Basic, Pro, or Enterprise below and complete payment to unlock the modules included in your chosen package.
                 </p>
               </div>
             </div>
@@ -366,22 +474,20 @@ export const BillingSubscriptionsPage: React.FC = () => {
           <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
             {plans.map((p) => {
               const planTier = normalizePlanCode(p.code);
-              const isCurrent = hasActivePlan && effectiveTier === planTier && sub?.billingCycle === cycle;
-              const isSameTierOtherCycle = hasActivePlan && effectiveTier === planTier && sub?.billingCycle !== cycle;
+              const isCurrent = hasPaidPlan && effectiveTier === planTier && currentSubObj?.billingCycle === cycle;
+              const isSameTierOtherCycle = hasPaidPlan && effectiveTier === planTier && currentSubObj?.billingCycle !== cycle;
               const isHigher = PLAN_RANK[planTier] > PLAN_RANK[effectiveTier];
               const displayPrice = cycle === 'monthly' ? p.monthlyPriceCents : Math.round(p.annualPriceCents / 12);
               const annualTotal = p.annualPriceCents;
               const isPopular = planTier === 'pro';
 
-              let buttonLabel = `Subscribe to ${p.name}`;
-              if (busyPlan === p.code) {
-                buttonLabel = 'Activating Package...';
-              } else if (isCurrent) {
+              let buttonLabel = `Subscribe & Pay — ${p.name}`;
+              if (isCurrent) {
                 buttonLabel = `Active Plan (${p.name})`;
               } else if (isSameTierOtherCycle) {
                 buttonLabel = `Switch to ${cycle === 'annual' ? 'Annual' : 'Monthly'} Billing`;
-              } else if (hasActivePlan) {
-                buttonLabel = isHigher ? `Upgrade to ${p.name}` : `Switch to ${p.name}`;
+              } else if (hasPaidPlan) {
+                buttonLabel = isHigher ? `Upgrade & Pay — ${p.name}` : `Switch to ${p.name}`;
               }
 
               return (
@@ -456,8 +562,8 @@ export const BillingSubscriptionsPage: React.FC = () => {
 
                   <button
                     type="button"
-                    disabled={isCurrent || busyPlan !== null}
-                    onClick={() => void handleSubscribe(p)}
+                    disabled={isCurrent}
+                    onClick={() => handleOpenCheckout(p)}
                     className={`mt-6 w-full rounded-lg px-4 py-2.5 text-xs font-bold transition-colors ${
                       isCurrent
                         ? 'border border-emerald-400/40 bg-emerald-500/20 text-emerald-200 cursor-default'
@@ -482,11 +588,14 @@ export const BillingSubscriptionsPage: React.FC = () => {
               Package Access Breakdown
             </h2>
             <p className="mt-0.5 text-xs text-white/80">
-              Exact platform modules unlocked by each subscription tier. Locked features require subscribing to the corresponding package.
+              Exact platform modules unlocked by each paid package after your 7-day free trial. Locked features require subscribing to the corresponding tier.
             </p>
           </div>
           <span className="text-xs font-semibold text-sky-300">
-            Active Tier: <strong className="text-white">{getTierDisplayName(effectiveTier)}</strong>
+            Active Status:{' '}
+            <strong className="text-white">
+              {trialActive ? `7-Day Free Trial (${trialDaysLeft}d left)` : getTierDisplayName(effectiveTier)}
+            </strong>
           </span>
         </div>
 
@@ -539,19 +648,19 @@ export const BillingSubscriptionsPage: React.FC = () => {
         </div>
       </section>
 
-      {/* Real Subscription & Billing Activity History */}
+      {/* Real Subscription & Payment Receipt History */}
       <section className="lt-neon-card rounded-2xl p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-base font-bold text-white flex items-center gap-2">
             <CreditCard className="h-4 w-4 text-sky-300" />
-            Subscription Activity Log
+            Subscription &amp; Payment Receipts
           </h2>
           <span className="text-xs text-white/75">Live workspace billing events</span>
         </div>
 
         {history.length === 0 ? (
           <div className="rounded-xl border border-sky-400/20 bg-[#061233]/70 p-6 text-center text-xs text-white/80">
-            No subscription transactions recorded yet. Choose a package above to activate your subscription.
+            No paid subscription transactions recorded yet. Choose a package above to open checkout and activate your plan.
           </div>
         ) : (
           <div className="space-y-2.5">
@@ -571,6 +680,12 @@ export const BillingSubscriptionsPage: React.FC = () => {
                   <p className="text-[11px] text-white/75">
                     {new Date(item.createdAt).toLocaleString()}
                     {item.action !== 'billing.plan_cancelled' ? ` · ${item.billingCycle} billing` : ''}
+                    {item.transactionId ? ` · Receipt ${item.transactionId}` : ''}
+                    {item.cardLast4
+                      ? ` · Card •••• ${item.cardLast4}`
+                      : item.paymentMethod === 'bank_transfer'
+                      ? ' · Bank Transfer'
+                      : ''}
                   </p>
                 </div>
                 {item.amountCents > 0 && (
@@ -583,6 +698,28 @@ export const BillingSubscriptionsPage: React.FC = () => {
           </div>
         )}
       </section>
+
+      {/* Interactive Subscription Payment Checkout Modal */}
+      {checkoutPlan && (
+        <SubscriptionCheckoutModal
+          plan={checkoutPlan}
+          initialCycle={cycle}
+          defaultEmail={user?.email || ''}
+          defaultName={user?.fullName || ''}
+          workspaceName={activeWorkspace?.brandProfile?.brandName || activeWorkspace?.name || 'Workspace'}
+          isTrialActive={trialActive}
+          trialDaysRemaining={trialDaysLeft}
+          submitting={checkoutSubmitting}
+          serverError={checkoutError}
+          onClose={() => {
+            if (!checkoutSubmitting) {
+              setCheckoutPlan(null);
+              setCheckoutError(null);
+            }
+          }}
+          onConfirmPayment={handleCompletePayment}
+        />
+      )}
     </div>
   );
 };

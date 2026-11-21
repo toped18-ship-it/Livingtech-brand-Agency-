@@ -60,7 +60,7 @@ export function createExpressApp(db: DbInstance) {
       const originalEnd = res.end.bind(res);
       let persisted = false;
       (res as unknown as { end: (...args: unknown[]) => express.Response }).end = (...args: unknown[]) => {
-        if (persisted || res.statusCode >= 400) {
+        if (persisted || res.locals.rtdbPersisted || res.statusCode >= 400) {
           return originalEnd(...(args as Parameters<typeof originalEnd>));
         }
         persisted = true;

@@ -1,0 +1,42 @@
+{
+  "rules": {
+    "livingtech_app": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "tables": {
+        "users": {
+          ".indexOn": ["email", "external_uid"]
+        },
+        "workspaces": {
+          ".indexOn": ["owner_user_id", "organisation_id", "slug"]
+        },
+        "subscriptions": {
+          ".indexOn": ["workspace_id", "status"]
+        },
+        "sessions": {
+          ".indexOn": ["user_id", "token_hash"]
+        },
+        "social_accounts": {
+          ".indexOn": ["workspace_id", "platform_id"]
+        },
+        "content_posts": {
+          ".indexOn": ["workspace_id", "status"]
+        }
+      }
+    },
+    "livingtech_client": {
+      "users": {
+        "$uid": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        }
+      },
+      "workspaces": {
+        "$workspaceId": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        }
+      }
+    }
+  }
+}

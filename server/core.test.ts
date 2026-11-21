@@ -86,28 +86,12 @@ test('Full Phase 1 security & lifecycle: registration, login, logout, password r
     assert.equal(regB.status, 201);
     const tokenB = regB.data.token as string;
 
-    // 5. Unsubscribed Customer A cannot create posts until subscribing; subscribe to Basic first
-    const unsubPost = await reqJson(srv.baseUrl, `/api/workspaces/${wsA}/posts`, {
-      method: 'POST',
-      token: tokenA,
-      body: {
-        title: 'Blocked Before Subscribe',
-        caption: 'Should be blocked without active plan.',
-        platformKey: 'linkedin',
-        status: 'draft',
-      },
-    });
-    assert.equal(unsubPost.status, 403);
-    assert.equal(unsubPost.data.code, 'SUBSCRIPTION_REQUIRED');
+    // 5. Fresh Customer A starts on a 7-day free trial and can create posts immediately during trial
+    assert.equal(regA.data.workspaces[0].subscription.status, 'trialing');
+    assert.equal(regA.data.workspaces[0].subscription.isTrialActive, true);
+    assert.equal(regA.data.workspaces[0].subscription.trialDaysRemaining, 7);
 
-    const subBasic = await reqJson(srv.baseUrl, `/api/workspaces/${wsA}/subscription/change`, {
-      method: 'POST',
-      token: tokenA,
-      body: { planCode: 'basic', billingCycle: 'monthly' },
-    });
-    assert.equal(subBasic.status, 200);
-
-    // Now Customer A creates a private post in Workspace A
+    // Customer A creates a private post in Workspace A during their 7-day trial
     const postA = await reqJson(srv.baseUrl, `/api/workspaces/${wsA}/posts`, {
       method: 'POST',
       token: tokenA,
@@ -450,26 +434,61 @@ test('Strict Subscription Package Entitlements: Basic vs Pro vs Enterprise API e
     const token = reg.data.token as string;
     const wid = reg.data.workspaces[0].id as string;
 
-    // 1. Fresh client starts with NO active subscription & zero demo records
+    // 1. Fresh client starts with an active 7-day free trial & zero demo records
     const initialSub = await reqJson(srv.baseUrl, `/api/workspaces/${wid}/subscription`, { token });
     assert.equal(initialSub.status, 200);
-    assert.equal(initialSub.data.status, 'none');
-    assert.equal(initialSub.data.planCode, 'none');
+    assert.equal(initialSub.data.status, 'trialing');
+    assert.equal(initialSub.data.isTrialActive, true);
+    assert.equal(initialSub.data.isTrialExpired, false);
+    assert.equal(initialSub.data.trialDaysRemaining, 7);
+    assert.equal(initialSub.data.monthlyAiCredits, 100);
+    assert.equal(reg.data.workspaces[0].aiCreditsBalance, 100);
 
-    // All paid modules are locked before subscribing
-    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/social-accounts`, { token })).status, 403);
+    // Core modules are accessible during the active 7-day free trial
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/social-accounts`, { token })).status, 200);
+    assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/media`, { token })).status, 200);
+
+    // 1b. Expire the 7-day trial (simulate 8 days elapsed) -> subscription is now strictly required
+    const expiredAt = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+    srv.db
+      .prepare('UPDATE subscriptions SET current_period_end = ? WHERE workspace_id = ?')
+      .run(expiredAt, wid);
+
+    const expiredSub = await reqJson(srv.baseUrl, `/api/workspaces/${wid}/subscription`, { token });
+    assert.equal(expiredSub.status, 200);
+    assert.equal(expiredSub.data.isTrialActive, false);
+    assert.equal(expiredSub.data.isTrialExpired, true);
+    assert.equal(expiredSub.data.trialDaysRemaining, 0);
+
+    // All paid modules are locked once the 7-day trial ends
+    const lockedAccounts = await reqJson(srv.baseUrl, `/api/workspaces/${wid}/social-accounts`, { token });
+    assert.equal(lockedAccounts.status, 403);
+    assert.equal(lockedAccounts.data.code, 'TRIAL_EXPIRED');
     assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/media`, { token })).status, 403);
     assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/analytics`, { token })).status, 403);
     assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/ai/graphics`, { token })).status, 403);
     assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/ai/strategies`, { token })).status, 403);
 
-    // 2. Subscribe to Basic -> unlocks Social Accounts, AI Studio, Calendar, Media; keeps Pro/Enterprise locked
+    // 2. Subscribe & pay for Basic -> unlocks Social Accounts, AI Studio, Calendar, Media; keeps Pro/Enterprise locked
     const basicRes = await reqJson(srv.baseUrl, `/api/workspaces/${wid}/subscription/change`, {
       method: 'POST',
       token,
-      body: { planCode: 'basic', billingCycle: 'monthly' },
+      body: {
+        planCode: 'basic',
+        billingCycle: 'monthly',
+        payment: {
+          method: 'card',
+          billingEmail: 'tiers@agency.io',
+          cardholderName: 'Tier Owner',
+          cardBrand: 'Visa',
+          cardLast4: '4242',
+        },
+      },
     });
     assert.equal(basicRes.status, 200);
+    assert.ok(String(basicRes.data.transactionId || '').startsWith('LT-PAY-'));
+    assert.equal(basicRes.data.subscription.status, 'active');
+    assert.equal(basicRes.data.subscription.planCode, 'basic');
     assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/social-accounts`, { token })).status, 200);
     assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/media`, { token })).status, 200);
     assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/calendar`, { token })).status, 200);
@@ -486,9 +505,20 @@ test('Strict Subscription Package Entitlements: Basic vs Pro vs Enterprise API e
     const proRes = await reqJson(srv.baseUrl, `/api/workspaces/${wid}/subscription/change`, {
       method: 'POST',
       token,
-      body: { planCode: 'pro', billingCycle: 'annual' },
+      body: {
+        planCode: 'pro',
+        billingCycle: 'annual',
+        payment: {
+          method: 'card',
+          billingEmail: 'tiers@agency.io',
+          cardholderName: 'Tier Owner',
+          cardBrand: 'Mastercard',
+          cardLast4: '5555',
+        },
+      },
     });
     assert.equal(proRes.status, 200);
+    assert.ok(String(proRes.data.transactionId || '').startsWith('LT-PAY-'));
     assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/analytics`, { token })).status, 200);
     assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/ai/graphics`, { token })).status, 200);
     assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/publishing-queue`, { token })).status, 200);
@@ -500,7 +530,16 @@ test('Strict Subscription Package Entitlements: Basic vs Pro vs Enterprise API e
     const entRes = await reqJson(srv.baseUrl, `/api/workspaces/${wid}/subscription/change`, {
       method: 'POST',
       token,
-      body: { planCode: 'enterprise', billingCycle: 'monthly' },
+      body: {
+        planCode: 'enterprise',
+        billingCycle: 'monthly',
+        payment: {
+          method: 'bank_transfer',
+          billingEmail: 'tiers@agency.io',
+          cardholderName: 'Tier Owner',
+          reference: 'WIRE-2026-991',
+        },
+      },
     });
     assert.equal(entRes.status, 200);
     assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/ai/strategies`, { token })).status, 200);
@@ -514,10 +553,15 @@ test('Strict Subscription Package Entitlements: Basic vs Pro vs Enterprise API e
     assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/social-accounts`, { token })).status, 403);
     assert.equal((await reqJson(srv.baseUrl, `/api/workspaces/${wid}/ai/strategies`, { token })).status, 403);
 
-    // Billing history reflects real subscription changes
+    // Billing history reflects real subscription changes and safe payment receipt metadata
     const historyRes = await reqJson(srv.baseUrl, `/api/workspaces/${wid}/billing-history`, { token });
     assert.equal(historyRes.status, 200);
     assert.ok(historyRes.data.length >= 4);
+    assert.ok(
+      historyRes.data.some((row: { transactionId?: string; cardLast4?: string }) =>
+        String(row.transactionId || '').startsWith('LT-PAY-') && row.cardLast4 === '4242'
+      )
+    );
   } finally {
     await srv.close();
   }

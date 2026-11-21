@@ -107,6 +107,10 @@ export interface WorkspaceSubscriptionSummary {
   status: 'none' | 'trialing' | 'active' | 'past_due' | 'cancelled';
   billingCycle: 'monthly' | 'annual';
   currentPeriodEnd: string | null;
+  trialEndsAt?: string | null;
+  trialDaysRemaining?: number;
+  isTrialActive?: boolean;
+  isTrialExpired?: boolean;
   maxWorkspaces: number;
   maxSocialAccounts: number;
   maxTeamMembers: number;
@@ -382,6 +386,15 @@ export interface SubscriptionPlanRecord {
   features: string[];
 }
 
+export interface SubscriptionPaymentDetails {
+  method: 'card' | 'bank_transfer';
+  billingEmail: string;
+  cardholderName?: string;
+  cardBrand?: string;
+  cardLast4?: string;
+  reference?: string;
+}
+
 export interface WorkspaceSubscriptionRecord {
   id: string;
   workspaceId: string;
@@ -398,6 +411,10 @@ export interface WorkspaceSubscriptionRecord {
   billingCycle: 'monthly' | 'annual';
   currentPeriodStart: string;
   currentPeriodEnd: string;
+  trialEndsAt?: string | null;
+  trialDaysRemaining?: number;
+  isTrialActive?: boolean;
+  isTrialExpired?: boolean;
   hasSubscription?: boolean;
 }
 

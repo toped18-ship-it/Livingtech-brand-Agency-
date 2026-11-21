@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import type { DbInstance } from '../db/database';
-import { getRtdbStatus, hydrateDatabaseFromRtdb } from '../db/rtdbSync';
+import { getRtdbStatus, hydrateDatabaseFromRtdb, isRtdbSyncEnabled, persistDatabaseToRtdb } from '../db/rtdbSync';
 import { hashPassword, verifyPassword } from '../db/database';
 import {
   assertWorkspaceAccess,
@@ -13,16 +13,27 @@ import {
   listUserWorkspaces,
   loginWithPassword,
   mapUserRow,
+  provisionOrSyncVerifiedEmailUser,
   recordAuditLog,
   registerUserWithWorkspace,
   revokeSession,
   syncFirebaseGoogleUser,
   verifyEmailWithToken,
 } from '../services/authService';
+import {
+  FirebaseEmailExistsError,
+  firebaseSignInWithEmailPassword,
+  firebaseSignUpWithEmailPassword,
+} from '../services/firebaseAuthService';
 import { createWorkspaceFeatureGuard } from '../services/entitlementMiddleware';
 import {
+  FREE_TRIAL_AI_CREDITS,
+  FREE_TRIAL_MS,
   canAddSocialAccount,
   canAddTeamMember,
+  getTrialDaysRemaining,
+  isTrialActive,
+  isTrialExpired,
   type FeatureKey,
 } from '../../src/utils/planEntitlements';
 import {
@@ -235,13 +246,51 @@ export function createApiRouter(db: DbInstance): Router {
     industry: z.string().max(100).optional(),
   });
 
-  router.post('/auth/register', (req, res) => {
+  const getHeaderFirebaseIdToken = (req: Request): string | undefined => {
+    const raw = req.headers['x-firebase-id-token'];
+    return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
+  };
+
+  router.post('/auth/register', async (req, res) => {
     try {
       const payload = RegisterSchema.parse(req.body);
-      const result = registerUserWithWorkspace(db, payload);
+      const headerIdToken = getHeaderFirebaseIdToken(req);
+
+      // Refresh from Firebase RTDB before checking duplicates so cross-instance registrations stay consistent
+      if (isRtdbSyncEnabled()) {
+        await hydrateDatabaseFromRtdb(db, { authToken: headerIdToken, force: true }).catch(() => false);
+      }
+
+      // Validate password strength & local uniqueness before creating the Firebase Auth identity
+      const normalizedEmail = payload.email.trim().toLowerCase();
+      const strength = validatePasswordStrength(payload.password);
+      if (!strength.valid) {
+        return res.status(400).json({ error: strength.reason || 'Weak password' });
+      }
+      if (db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail)) {
+        return res.status(400).json({ error: 'An account with this email already exists.' });
+      }
+
+      // Persist email/password identity in Firebase Authentication so login survives serverless cold starts
+      const fbAuth = await firebaseSignUpWithEmailPassword(normalizedEmail, payload.password, payload.fullName);
+
+      const result = registerUserWithWorkspace(db, {
+        ...payload,
+        externalUid: fbAuth?.localId ?? null,
+      });
+
+      // Explicitly await Firebase Realtime Database persistence before completing the response
+      if (isRtdbSyncEnabled()) {
+        await persistDatabaseToRtdb(db, { authToken: fbAuth?.idToken || headerIdToken }).catch(() => false);
+        res.locals.rtdbPersisted = true;
+      }
+
       setSessionCookie(req, res, result.token);
       res.status(201).json(result);
     } catch (err) {
+      if (err instanceof FirebaseEmailExistsError) {
+        return res.status(400).json({ error: err.message });
+      }
       handleRouteError(res, err, 400);
     }
   });
@@ -251,10 +300,58 @@ export function createApiRouter(db: DbInstance): Router {
     password: z.string().min(1, 'Password is required.'),
   });
 
-  router.post('/auth/login', (req, res) => {
+  router.post('/auth/login', async (req, res) => {
     try {
       const payload = LoginSchema.parse(req.body);
-      const result = loginWithPassword(db, payload.email, payload.password);
+      const headerIdToken = getHeaderFirebaseIdToken(req);
+      let activeIdToken = headerIdToken;
+      let result: ReturnType<typeof loginWithPassword> | null = null;
+
+      try {
+        result = loginWithPassword(db, payload.email, payload.password);
+      } catch (firstErr) {
+        const msg = firstErr instanceof Error ? firstErr.message : '';
+        if (msg !== 'Invalid email or password.') {
+          throw firstErr;
+        }
+
+        // 1. Force-hydrate from Firebase Realtime Database in case user registered on another serverless container
+        if (isRtdbSyncEnabled()) {
+          await hydrateDatabaseFromRtdb(db, { authToken: headerIdToken, force: true }).catch(() => false);
+          try {
+            result = loginWithPassword(db, payload.email, payload.password);
+          } catch (retryErr) {
+            const retryMsg = retryErr instanceof Error ? retryErr.message : '';
+            if (retryMsg !== 'Invalid email or password.') {
+              throw retryErr;
+            }
+          }
+        }
+
+        // 2. Verify directly against Firebase Authentication if local/RTDB cache did not yet contain the user
+        if (!result) {
+          const fbUser = await firebaseSignInWithEmailPassword(payload.email, payload.password);
+          if (!fbUser) {
+            throw firstErr;
+          }
+          activeIdToken = fbUser.idToken;
+          if (isRtdbSyncEnabled()) {
+            await hydrateDatabaseFromRtdb(db, { authToken: fbUser.idToken, force: true }).catch(() => false);
+          }
+          result = provisionOrSyncVerifiedEmailUser(db, {
+            externalUid: fbUser.localId,
+            email: fbUser.email,
+            password: payload.password,
+            fullName: fbUser.displayName,
+          });
+        }
+      }
+
+      if (isRtdbSyncEnabled()) {
+        await persistDatabaseToRtdb(db, { authToken: activeIdToken }).catch(() => false);
+        res.locals.rtdbPersisted = true;
+      }
+
       setSessionCookie(req, res, result.token);
       res.json(result);
     } catch (err) {
@@ -270,10 +367,18 @@ export function createApiRouter(db: DbInstance): Router {
     emailVerified: z.boolean().default(true),
   });
 
-  router.post('/auth/google-sync', (req, res) => {
+  router.post('/auth/google-sync', async (req, res) => {
     try {
       const payload = GoogleSyncSchema.parse(req.body);
+      const headerIdToken = getHeaderFirebaseIdToken(req);
+      if (isRtdbSyncEnabled()) {
+        await hydrateDatabaseFromRtdb(db, { authToken: headerIdToken, force: true }).catch(() => false);
+      }
       const result = syncFirebaseGoogleUser(db, payload);
+      if (isRtdbSyncEnabled()) {
+        await persistDatabaseToRtdb(db, { authToken: headerIdToken }).catch(() => false);
+        res.locals.rtdbPersisted = true;
+      }
       setSessionCookie(req, res, result.token);
       res.json(result);
     } catch (err) {
@@ -281,9 +386,13 @@ export function createApiRouter(db: DbInstance): Router {
     }
   });
 
-  router.post('/auth/logout', (req: AuthedRequest, res) => {
+  router.post('/auth/logout', async (req: AuthedRequest, res) => {
     const token = extractToken(req);
     if (token) revokeSession(db, token);
+    if (isRtdbSyncEnabled()) {
+      await persistDatabaseToRtdb(db, { authToken: getHeaderFirebaseIdToken(req) }).catch(() => false);
+      res.locals.rtdbPersisted = true;
+    }
     clearSessionCookie(req, res);
     res.json({ success: true });
   });
@@ -489,14 +598,16 @@ export function createApiRouter(db: DbInstance): Router {
 
       const wsId = crypto.randomUUID();
       const slug = `${slugifyWorkspaceName(payload.name)}-${crypto.randomBytes(3).toString('hex')}`;
-      const starterPlan = db.prepare("SELECT id FROM subscription_plans WHERE code = 'basic'").get() as { id: string };
-      const periodEnd = new Date(Date.now() + 30 * 86400 * 1000).toISOString();
+      const trialPlan =
+        (db.prepare("SELECT id FROM subscription_plans WHERE code = 'enterprise'").get() as { id: string } | undefined) ||
+        (db.prepare("SELECT id FROM subscription_plans WHERE code = 'basic'").get() as { id: string });
+      const periodEnd = new Date(Date.now() + FREE_TRIAL_MS).toISOString();
 
       db.transaction(() => {
         db.prepare(`
           INSERT INTO workspaces (id, organisation_id, owner_user_id, name, slug, timezone, preferred_language, ai_credits_balance, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 250, ?, ?)
-        `).run(wsId, org!.id, req.user!.id, payload.name.trim(), slug, payload.timezone, payload.preferredLanguage, now, now);
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(wsId, org!.id, req.user!.id, payload.name.trim(), slug, payload.timezone, payload.preferredLanguage, FREE_TRIAL_AI_CREDITS, now, now);
 
         db.prepare(`
           INSERT INTO brand_profiles (
@@ -517,7 +628,7 @@ export function createApiRouter(db: DbInstance): Router {
         db.prepare(`
           INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
           VALUES (?, ?, ?, ?, 'trialing', 'monthly', ?, ?, ?, ?)
-        `).run(crypto.randomUUID(), org!.id, wsId, starterPlan.id, now, periodEnd, now, now);
+        `).run(crypto.randomUUID(), org!.id, wsId, trialPlan.id, now, periodEnd, now, now);
 
         recordAuditLog(db, {
           actorUserId: req.user!.id,
@@ -1463,34 +1574,65 @@ export function createApiRouter(db: DbInstance): Router {
         billingCycle: 'monthly',
         currentPeriodStart: '',
         currentPeriodEnd: '',
+        trialEndsAt: null,
+        trialDaysRemaining: 0,
+        isTrialActive: false,
+        isTrialExpired: false,
         hasSubscription: false,
       });
     }
+
+    const rawStatus = String(row.status) as 'trialing' | 'active' | 'past_due' | 'cancelled';
+    const currentPeriodEnd = String(row.current_period_end || '');
+    const trialEndsAt = rawStatus === 'trialing' ? currentPeriodEnd : null;
+    const subCheck = {
+      planCode: String(row.plan_code) as 'basic' | 'pro' | 'enterprise',
+      status: rawStatus,
+      currentPeriodEnd,
+      trialEndsAt,
+    };
+    const activeTrial = isTrialActive(subCheck);
+    const expiredTrial = isTrialExpired(subCheck);
+    const daysRemaining = getTrialDaysRemaining(subCheck);
 
     res.json({
       id: String(row.id),
       workspaceId: String(row.workspace_id),
       planCode: String(row.plan_code),
-      planName: String(row.plan_name),
+      planName: activeTrial ? '7-Day Free Trial' : expiredTrial ? 'Trial Expired' : String(row.plan_name),
       monthlyPriceCents: Number(row.monthly_price_cents),
-      monthlyAiCredits: Number(row.monthly_ai_credits),
-      maxWorkspaces: Number(row.max_workspaces),
-      maxSocialAccounts: Number(row.max_social_accounts),
-      maxTeamMembers: Number(row.max_team_members),
-      status: String(row.status),
+      monthlyAiCredits: activeTrial ? FREE_TRIAL_AI_CREDITS : Number(row.monthly_ai_credits),
+      maxWorkspaces: expiredTrial ? 1 : Number(row.max_workspaces),
+      maxSocialAccounts: expiredTrial ? 0 : Number(row.max_social_accounts),
+      maxTeamMembers: expiredTrial ? 1 : Number(row.max_team_members),
+      status: rawStatus,
       billingCycle: String(row.billing_cycle),
       currentPeriodStart: String(row.current_period_start),
-      currentPeriodEnd: String(row.current_period_end),
-      hasSubscription: String(row.status) === 'active' || String(row.status) === 'trialing',
+      currentPeriodEnd,
+      trialEndsAt,
+      trialDaysRemaining: daysRemaining,
+      isTrialActive: activeTrial,
+      isTrialExpired: expiredTrial,
+      hasSubscription: rawStatus === 'active' || activeTrial,
     });
   });
 
   router.post('/workspaces/:wid/subscription/change', requireAuth, requireWorkspaceMember, (req: AuthedRequest, res) => {
     try {
       const wid = String(req.params.wid);
-      const { planCode, billingCycle } = z.object({
+      const { planCode, billingCycle, payment } = z.object({
         planCode: z.enum(['basic', 'pro', 'enterprise', 'starter', 'growth', 'agency']),
         billingCycle: z.enum(['monthly', 'annual']).default('monthly'),
+        payment: z
+          .object({
+            method: z.enum(['card', 'bank_transfer']).default('card'),
+            billingEmail: z.string().email().optional(),
+            cardholderName: z.string().min(2).max(120).optional(),
+            cardBrand: z.string().max(40).optional(),
+            cardLast4: z.string().regex(/^\d{4}$/).optional(),
+            reference: z.string().min(4).max(120).optional(),
+          })
+          .optional(),
       }).parse(req.body);
       const plan = db.prepare('SELECT * FROM subscription_plans WHERE code = ?').get(planCode) as Record<string, unknown> | undefined;
       if (!plan) return res.status(404).json({ error: 'Plan not found.' });
@@ -1501,23 +1643,24 @@ export function createApiRouter(db: DbInstance): Router {
       const now = new Date().toISOString();
       const nextPeriodEnd = new Date(Date.now() + (billingCycle === 'annual' ? 365 : 30) * 86400 * 1000).toISOString();
       const amountCents = billingCycle === 'annual' ? Number(plan.annual_price_cents) : Number(plan.monthly_price_cents);
+      const transactionId = `LT-PAY-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
 
       db.transaction(() => {
         const existingSub = db
-          .prepare('SELECT id FROM subscriptions WHERE workspace_id = ? ORDER BY updated_at DESC, created_at DESC LIMIT 1')
-          .get(wid) as { id: string } | undefined;
+          .prepare('SELECT id, status FROM subscriptions WHERE workspace_id = ? ORDER BY updated_at DESC, created_at DESC LIMIT 1')
+          .get(wid) as { id: string; status: string } | undefined;
 
         if (existingSub) {
           db.prepare(`
             UPDATE subscriptions
-            SET plan_id = ?, billing_cycle = ?, status = 'active', current_period_start = ?, current_period_end = ?, updated_at = ?
+            SET plan_id = ?, billing_cycle = ?, status = 'active', current_period_start = ?, current_period_end = ?, provider_subscription_id = ?, updated_at = ?
             WHERE id = ?
-          `).run(plan.id, billingCycle, now, nextPeriodEnd, now, existingSub.id);
+          `).run(plan.id, billingCycle, now, nextPeriodEnd, transactionId, now, existingSub.id);
         } else {
           db.prepare(`
-            INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
-            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
-          `).run(crypto.randomUUID(), ws.organisation_id, wid, plan.id, billingCycle, now, nextPeriodEnd, now, now);
+            INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, provider_subscription_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)
+          `).run(crypto.randomUUID(), ws.organisation_id, wid, plan.id, billingCycle, now, nextPeriodEnd, transactionId, now, now);
         }
 
         db.prepare('UPDATE workspaces SET ai_credits_balance = MAX(ai_credits_balance, ?), updated_at = ? WHERE id = ?').run(
@@ -1528,15 +1671,27 @@ export function createApiRouter(db: DbInstance): Router {
           actorUserId: req.user!.id,
           actorEmail: req.user!.email,
           workspaceId: wid,
-          action: existingSub ? 'billing.plan_changed' : 'billing.plan_subscribed',
+          action: existingSub && existingSub.status === 'active' ? 'billing.plan_changed' : 'billing.plan_subscribed',
           resourceType: 'subscription',
           resourceId: wid,
-          metadata: { planCode, planName: String(plan.name), billingCycle, amountCents },
+          metadata: {
+            planCode,
+            planName: String(plan.name),
+            billingCycle,
+            amountCents,
+            transactionId,
+            paymentMethod: payment?.method || 'card',
+            cardBrand: payment?.cardBrand || null,
+            cardLast4: payment?.cardLast4 || null,
+            paymentReference: payment?.reference || null,
+            billingEmail: payment?.billingEmail || req.user!.email,
+          },
         });
       })();
 
       const updatedSub = getWorkspaceSubscriptionSummary(db, wid);
-      res.json({ success: true, planCode, billingCycle, subscription: updatedSub });
+      const workspaces = listUserWorkspaces(db, req.user!.id);
+      res.json({ success: true, transactionId, planCode, billingCycle, subscription: updatedSub, workspaces });
     } catch (err) {
       handleRouteError(res, err, 400);
     }
@@ -1560,7 +1715,8 @@ export function createApiRouter(db: DbInstance): Router {
           metadata: { status: 'cancelled' },
         });
       }
-      res.json({ success: true });
+      const workspaces = listUserWorkspaces(db, req.user!.id);
+      res.json({ success: true, workspaces });
     } catch (err) {
       handleRouteError(res, err, 400);
     }
@@ -1592,6 +1748,9 @@ export function createApiRouter(db: DbInstance): Router {
           planCode: String(meta.planCode || ''),
           billingCycle: String(meta.billingCycle || 'monthly'),
           amountCents: Number(meta.amountCents || 0),
+          transactionId: meta.transactionId ? String(meta.transactionId) : undefined,
+          paymentMethod: meta.paymentMethod ? String(meta.paymentMethod) : undefined,
+          cardLast4: meta.cardLast4 ? String(meta.cardLast4) : undefined,
           createdAt: r.created_at,
         };
       })

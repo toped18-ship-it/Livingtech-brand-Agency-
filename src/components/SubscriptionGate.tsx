@@ -9,6 +9,7 @@ import {
   ROUTE_TO_FEATURE,
   getEffectivePlanTier,
   getTierDisplayName,
+  isTrialExpired,
 } from '../utils/planEntitlements';
 import { formatCurrencyCents } from '../utils/domain';
 
@@ -28,6 +29,7 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
 
   const feature = FEATURE_CATALOG[featureKey];
   const currentTier = getEffectivePlanTier(subscription);
+  const trialExpired = isTrialExpired(subscription);
   const requiredTier = feature.requiredTier;
   const requiredPlan = PLAN_LIMITS[requiredTier];
   const requiredBullets = PLAN_FEATURE_BULLETS[requiredTier];
@@ -42,10 +44,14 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
             </div>
             <div>
               <p className="text-xs font-semibold text-amber-300">
-                Package Access Restricted · {requiredPlan.name} Plan Required
+                {trialExpired
+                  ? '7-Day Free Trial Ended · Subscription Required'
+                  : `Package Access Restricted · ${requiredPlan.name} Plan Required`}
               </p>
               <h1 className="mt-0.5 font-display text-xl sm:text-2xl font-bold text-white">
-                {feature.label} is not included in your current package
+                {trialExpired
+                  ? `Your 7-day free trial has ended — subscribe to continue using ${feature.label}`
+                  : `${feature.label} is not included in your current package`}
               </h1>
             </div>
           </div>
@@ -59,10 +65,12 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
           <div className="rounded-xl border border-white/15 bg-white/5 p-4">
             <p className="text-xs font-semibold text-sky-300">Your Current Subscription</p>
             <p className="mt-1 font-display text-lg font-bold text-white">
-              {getTierDisplayName(currentTier)}
+              {trialExpired ? '7-Day Trial Expired' : getTierDisplayName(currentTier)}
             </p>
             <p className="mt-1 text-xs text-white/80">
-              {currentTier === 'none'
+              {trialExpired
+                ? 'Your 7-day free trial period has completed. Select a subscription package and complete payment to restore workspace access.'
+                : currentTier === 'none'
                 ? 'No active subscription package selected yet. Subscribe to unlock workspace tools.'
                 : `Your workspace currently has access only to features included in the ${getTierDisplayName(currentTier)} package.`}
             </p>
@@ -100,14 +108,14 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
         <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
           <p className="inline-flex items-center gap-1.5 text-xs text-white/80">
             <ShieldCheck className="h-4 w-4 text-sky-300 shrink-0" />
-            Instant activation — only features in your subscribed package are enabled.
+            Instant activation upon payment — only features in your subscribed package are enabled.
           </p>
           <button
             type="button"
             onClick={onGoToBilling}
             className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-blue-500 transition-colors shadow-sm"
           >
-            {currentTier === 'none' ? 'Choose a Subscription Plan' : `Upgrade to ${requiredPlan.name}`}
+            {currentTier === 'none' ? 'Open Subscription & Payment' : `Upgrade to ${requiredPlan.name}`}
             <ArrowRight className="h-4 w-4" />
           </button>
         </div>

@@ -393,10 +393,10 @@ function applyRtdbSnapshotToDb(
               .map((r, idx): [string, Record<string, unknown>] | null =>
                 r && typeof r === 'object' ? [getRowPrimaryKey(r, idx), r] : null
               )
-              .filter((e): e is [string, Record<string, unknown>] => e !== null)
+              .filter((e): e is [string, Record<string, unknown>] => e !== null && !e[0].startsWith('_'))
           : Object.entries(rawTable).filter(
               (entry): entry is [string, Record<string, unknown>] =>
-                Boolean(entry[1] && typeof entry[1] === 'object')
+                !entry[0].startsWith('_') && Boolean(entry[1] && typeof entry[1] === 'object')
             );
 
         // If a row existed in our previous synced snapshot and is now absent remotely, delete it locally
@@ -420,6 +420,7 @@ function applyRtdbSnapshotToDb(
         }
 
         for (const [rtdbKey, row] of entries) {
+          if (rtdbKey.startsWith('_')) continue;
           const cols = Object.keys(row).filter((col) => validCols.has(col));
           if (cols.length === 0) continue;
           const placeholders = cols.map(() => '?').join(', ');

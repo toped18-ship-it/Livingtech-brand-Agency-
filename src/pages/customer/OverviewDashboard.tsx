@@ -27,7 +27,15 @@ import {
 import { apiClient } from '../../lib/apiClient';
 import { useAuth } from '../../context/AuthContext';
 import { useSystemSettings } from '../../context/SystemSettingsContext';
-import { canAccessRoute, getEffectivePlanTier, getRequiredPlanForRoute, getTierDisplayName } from '../../utils/planEntitlements';
+import {
+  canAccessRoute,
+  getEffectivePlanTier,
+  getRequiredPlanForRoute,
+  getTierDisplayName,
+  getTrialDaysRemaining,
+  isTrialActive,
+  isTrialExpired,
+} from '../../utils/planEntitlements';
 import type { CustomerDashboardData } from '../../shared/api-contracts';
 import type { CustomerRoute } from './types';
 
@@ -85,19 +93,28 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ onNavigate
   ];
 
   const currentTier = getEffectivePlanTier(activeWorkspace?.subscription);
+  const trialActive = isTrialActive(activeWorkspace?.subscription);
+  const trialExpired = isTrialExpired(activeWorkspace?.subscription);
+  const trialDaysLeft = getTrialDaysRemaining(activeWorkspace?.subscription);
 
   return (
     <div className="space-y-7">
-      {currentTier === 'none' && (
+      {(currentTier === 'none' || trialExpired) && (
         <section className="flex flex-col justify-between gap-4 rounded-2xl border border-amber-400/50 bg-amber-500/15 p-5 text-white sm:flex-row sm:items-center">
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/25 text-amber-300">
               <CreditCard className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="font-display text-base font-bold text-white">Activate a Subscription Package to Begin</h2>
+              <h2 className="font-display text-base font-bold text-white">
+                {trialExpired
+                  ? 'Your 7-Day Free Trial Has Ended — Subscription Required'
+                  : 'Activate a Subscription Package to Begin'}
+              </h2>
               <p className="mt-0.5 text-xs text-white/90">
-                Your workspace does not have an active subscription yet. Choose Basic, Pro, or Enterprise under Billing & Subscriptions to unlock your included tools.
+                {trialExpired
+                  ? 'Your 7-day free trial period is complete. Choose Basic, Pro, or Enterprise and complete payment to unlock your workspace modules.'
+                  : 'Your workspace does not have an active subscription yet. Choose Basic, Pro, or Enterprise under Billing & Subscriptions to unlock your included tools.'}
               </p>
             </div>
           </div>
@@ -106,7 +123,32 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ onNavigate
             onClick={() => onNavigate('billing')}
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-500 transition-colors whitespace-nowrap shrink-0"
           >
-            Choose Subscription Plan
+            Open Subscription &amp; Payment
+            <ArrowUpRight className="h-3.5 w-3.5" />
+          </button>
+        </section>
+      )}
+      {trialActive && (
+        <section className="flex flex-col justify-between gap-4 rounded-2xl border border-sky-400/40 bg-sky-500/10 p-5 text-white sm:flex-row sm:items-center">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-500/25 text-sky-300">
+              <Clock className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="font-display text-base font-bold text-white">
+                7-Day Free Trial Active · {trialDaysLeft} day{trialDaysLeft === 1 ? '' : 's'} remaining
+              </h2>
+              <p className="mt-0.5 text-xs text-white/90">
+                Explore all workspace tools free for 7 days. After 7 days, a paid subscription is required to continue.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate('billing')}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-500 transition-colors whitespace-nowrap shrink-0"
+          >
+            Choose Plan &amp; Pay
             <ArrowUpRight className="h-3.5 w-3.5" />
           </button>
         </section>

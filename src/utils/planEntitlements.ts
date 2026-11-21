@@ -219,6 +219,19 @@ export const PLAN_FEATURE_BULLETS: Record<PaidPlanTier, string[]> = {
   ],
 };
 
+export const FREE_TRIAL_DAYS = 7;
+export const FREE_TRIAL_MS = FREE_TRIAL_DAYS * 24 * 60 * 60 * 1000;
+export const FREE_TRIAL_AI_CREDITS = 100;
+
+export type SubscriptionLike = Pick<
+  WorkspaceSubscriptionSummary,
+  'planCode' | 'status'
+> & {
+  currentPeriodEnd?: string | null;
+  trialEndsAt?: string | null;
+  isTrialExpired?: boolean;
+};
+
 export function normalizePlanCode(code?: string | PlanCode | null): PlanTier {
   const normalized = String(code || '').trim().toLowerCase();
   if (normalized === 'basic' || normalized === 'starter') return 'basic';
@@ -227,24 +240,81 @@ export function normalizePlanCode(code?: string | PlanCode | null): PlanTier {
   return 'none';
 }
 
-export function isSubscriptionActive(status?: string | null): boolean {
-  const normalized = String(status || '').trim().toLowerCase();
-  return normalized === 'active' || normalized === 'trialing';
+export function getTrialEndTimestamp(subscription?: SubscriptionLike | null): number | null {
+  if (!subscription) return null;
+  const raw = subscription.trialEndsAt ?? subscription.currentPeriodEnd;
+  if (!raw) return null;
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function isTrialExpired(
+  subscription?: SubscriptionLike | null,
+  nowMs: number = Date.now()
+): boolean {
+  if (!subscription) return false;
+  if (subscription.isTrialExpired === true) return true;
+  const normalizedStatus = String(subscription.status || '').trim().toLowerCase();
+  if (normalizedStatus !== 'trialing') return false;
+  const endTs = getTrialEndTimestamp(subscription);
+  if (endTs === null) return false;
+  return endTs <= nowMs;
+}
+
+export function isTrialActive(
+  subscription?: SubscriptionLike | null,
+  nowMs: number = Date.now()
+): boolean {
+  if (!subscription) return false;
+  const normalizedStatus = String(subscription.status || '').trim().toLowerCase();
+  if (normalizedStatus !== 'trialing') return false;
+  return !isTrialExpired(subscription, nowMs);
+}
+
+export function getTrialDaysRemaining(
+  subscription?: SubscriptionLike | null,
+  nowMs: number = Date.now()
+): number {
+  if (!isTrialActive(subscription, nowMs)) return 0;
+  const endTs = getTrialEndTimestamp(subscription);
+  if (endTs === null) return FREE_TRIAL_DAYS;
+  const diff = endTs - nowMs;
+  if (diff <= 0) return 0;
+  return Math.max(1, Math.ceil(diff / (24 * 60 * 60 * 1000)));
+}
+
+export function isSubscriptionActive(
+  statusOrSubscription?: string | SubscriptionLike | null,
+  nowMs: number = Date.now()
+): boolean {
+  if (!statusOrSubscription) return false;
+  if (typeof statusOrSubscription === 'string') {
+    const normalized = statusOrSubscription.trim().toLowerCase();
+    return normalized === 'active' || normalized === 'trialing';
+  }
+  const normalized = String(statusOrSubscription.status || '').trim().toLowerCase();
+  if (normalized === 'active') return true;
+  if (normalized === 'trialing') {
+    return !isTrialExpired(statusOrSubscription, nowMs);
+  }
+  return false;
 }
 
 export function getEffectivePlanTier(
-  subscription?: Pick<WorkspaceSubscriptionSummary, 'planCode' | 'status'> | null
+  subscription?: SubscriptionLike | null,
+  nowMs: number = Date.now()
 ): PlanTier {
-  if (!subscription || !isSubscriptionActive(subscription.status)) {
+  if (!subscription || !isSubscriptionActive(subscription, nowMs)) {
     return 'none';
   }
   return normalizePlanCode(subscription.planCode);
 }
 
 export function getPlanLimits(
-  subscription?: Pick<WorkspaceSubscriptionSummary, 'planCode' | 'status'> | null
+  subscription?: SubscriptionLike | null,
+  nowMs: number = Date.now()
 ): PlanQuotaLimits {
-  return PLAN_LIMITS[getEffectivePlanTier(subscription)];
+  return PLAN_LIMITS[getEffectivePlanTier(subscription, nowMs)];
 }
 
 export function getRequiredPlanForFeature(feature: FeatureKey): PaidPlanTier {
@@ -257,36 +327,41 @@ export function getRequiredPlanForRoute(route: CustomerRoute): PaidPlanTier | nu
 }
 
 export function canAccessFeature(
-  subscription: Pick<WorkspaceSubscriptionSummary, 'planCode' | 'status'> | null | undefined,
-  feature: FeatureKey
+  subscription: SubscriptionLike | null | undefined,
+  feature: FeatureKey,
+  nowMs: number = Date.now()
 ): boolean {
-  const currentTier = getEffectivePlanTier(subscription);
+  const currentTier = getEffectivePlanTier(subscription, nowMs);
   const requiredTier = FEATURE_CATALOG[feature].requiredTier;
   return PLAN_RANK[currentTier] >= PLAN_RANK[requiredTier];
 }
 
 export function canAccessRoute(
-  subscription: Pick<WorkspaceSubscriptionSummary, 'planCode' | 'status'> | null | undefined,
-  route: CustomerRoute
+  subscription: SubscriptionLike | null | undefined,
+  route: CustomerRoute,
+  nowMs: number = Date.now()
 ): boolean {
   const feature = ROUTE_TO_FEATURE[route];
   if (!feature) {
     // Always accessible account/billing/overview routes
     return true;
   }
-  return canAccessFeature(subscription, feature);
+  return canAccessFeature(subscription, feature, nowMs);
 }
 
 export function canAddSocialAccount(
-  subscription: Pick<WorkspaceSubscriptionSummary, 'planCode' | 'status'> | null | undefined,
-  currentConnectedCount: number
+  subscription: SubscriptionLike | null | undefined,
+  currentConnectedCount: number,
+  nowMs: number = Date.now()
 ): { allowed: boolean; limit: number; reason?: string } {
-  const limits = getPlanLimits(subscription);
+  const limits = getPlanLimits(subscription, nowMs);
   if (limits.maxSocialAccounts <= 0) {
     return {
       allowed: false,
       limit: 0,
-      reason: 'An active subscription plan is required to connect social media accounts.',
+      reason: isTrialExpired(subscription, nowMs)
+        ? 'Your 7-day free trial has ended. Subscribe to a plan under Billing & Subscriptions to connect social accounts.'
+        : 'An active subscription plan is required to connect social media accounts.',
     };
   }
   if (currentConnectedCount >= limits.maxSocialAccounts) {
@@ -300,17 +375,20 @@ export function canAddSocialAccount(
 }
 
 export function canAddTeamMember(
-  subscription: Pick<WorkspaceSubscriptionSummary, 'planCode' | 'status'> | null | undefined,
-  currentMemberCount: number
+  subscription: SubscriptionLike | null | undefined,
+  currentMemberCount: number,
+  nowMs: number = Date.now()
 ): { allowed: boolean; limit: number; reason?: string } {
-  if (!canAccessFeature(subscription, 'team')) {
+  if (!canAccessFeature(subscription, 'team', nowMs)) {
     return {
       allowed: false,
-      limit: getPlanLimits(subscription).maxTeamMembers,
-      reason: 'Team Management requires a Pro or Enterprise subscription.',
+      limit: getPlanLimits(subscription, nowMs).maxTeamMembers,
+      reason: isTrialExpired(subscription, nowMs)
+        ? 'Your 7-day free trial has ended. Subscribe to Pro or Enterprise to manage team seats.'
+        : 'Team Management requires a Pro or Enterprise subscription.',
     };
   }
-  const limits = getPlanLimits(subscription);
+  const limits = getPlanLimits(subscription, nowMs);
   if (currentMemberCount >= limits.maxTeamMembers) {
     return {
       allowed: false,

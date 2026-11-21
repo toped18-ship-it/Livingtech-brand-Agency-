@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
+import http from 'node:http';
 import path from 'node:path';
 import { initDatabase } from './db/database';
 import { createExpressApp } from './app';
@@ -11,6 +12,7 @@ import {
   getUserBySessionToken,
   listUserWorkspaces,
 } from './services/authService';
+import { setFirebaseAuthFetchForTest } from './services/firebaseAuthService';
 import {
   DEFAULT_RTDB_URL,
   getRtdbStatus,
@@ -67,7 +69,9 @@ test('node:sqlite driver matches better-sqlite3 for full schema, transactions, a
       const workspaces = listUserWorkspaces(db, created.user.id);
       assert.equal(workspaces.length, 1);
       assert.equal(workspaces[0].name, 'Acme Brand Workspace');
-      assert.equal(workspaces[0].subscription?.planCode, 'none');
+      assert.equal(workspaces[0].subscription?.status, 'trialing');
+      assert.equal(workspaces[0].subscription?.isTrialActive, true);
+      assert.equal(workspaces[0].subscription?.trialDaysRemaining, 7);
 
       const app = createExpressApp(db);
       assert.equal(typeof app, 'function');
@@ -280,6 +284,7 @@ test('compiled ESM api/index.js boots and handles GET/POST auth requests in plai
       VERCEL_URL: 'livingtech-agency.vercel.app',
       NODE_ENV: 'production',
       DISABLE_RTDB_SYNC: 'true',
+      DISABLE_FIREBASE_AUTH_SYNC: 'true',
       PORT: '',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -384,5 +389,155 @@ test('compiled ESM api/index.js boots and handles GET/POST auth requests in plai
         // ignore
       }
     }
+  }
+});
+
+test('Registration persists to Firebase Auth so login succeeds across cold-start serverless containers even if RTDB returns 401', async () => {
+  // Simulate Firebase Identity Toolkit in-memory
+  const fbAccounts = new Map<string, { localId: string; email: string; password: string; displayName: string }>();
+
+  setFirebaseAuthFetchForTest(async (url, init) => {
+    const body = JSON.parse(String(init?.body || '{}')) as {
+      email?: string;
+      password?: string;
+      displayName?: string;
+      idToken?: string;
+    };
+    if (url.includes('accounts:signUp')) {
+      const email = String(body.email || '').toLowerCase();
+      if (fbAccounts.has(email)) {
+        return new Response(JSON.stringify({ error: { message: 'EMAIL_EXISTS' } }), { status: 400 });
+      }
+      const localId = `fb_uid_${fbAccounts.size + 1}`;
+      fbAccounts.set(email, { localId, email, password: String(body.password || ''), displayName: '' });
+      return new Response(
+        JSON.stringify({ localId, email, idToken: `idtoken_${localId}` }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    if (url.includes('accounts:update')) {
+      for (const acc of fbAccounts.values()) {
+        if (`idtoken_${acc.localId}` === body.idToken) {
+          acc.displayName = String(body.displayName || '');
+        }
+      }
+      return new Response(JSON.stringify({ displayName: body.displayName || '' }), { status: 200 });
+    }
+    if (url.includes('accounts:signInWithPassword')) {
+      const email = String(body.email || '').toLowerCase();
+      const acc = fbAccounts.get(email);
+      if (!acc || acc.password !== String(body.password || '')) {
+        return new Response(JSON.stringify({ error: { message: 'INVALID_LOGIN_CREDENTIALS' } }), { status: 400 });
+      }
+      return new Response(
+        JSON.stringify({
+          localId: acc.localId,
+          email: acc.email,
+          displayName: acc.displayName,
+          idToken: `idtoken_${acc.localId}`,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    return new Response(JSON.stringify({ error: { message: 'UNKNOWN_ENDPOINT' } }), { status: 404 });
+  });
+
+  // Simulate RTDB returning 401 Missing appcheck token
+  setRtdbFetchTransportForTest(async () => {
+    return new Response(JSON.stringify({ error: 'Missing appcheck token' }), { status: 401 });
+  });
+
+  const dbA = initDatabase(':memory:', { forceDriver: 'node:sqlite' });
+  const dbB = initDatabase(':memory:', { forceDriver: 'node:sqlite' });
+  const srvA = http.createServer(createExpressApp(dbA));
+  const srvB = http.createServer(createExpressApp(dbB));
+  await new Promise<void>((resolve) => srvA.listen(0, '127.0.0.1', () => resolve()));
+  await new Promise<void>((resolve) => srvB.listen(0, '127.0.0.1', () => resolve()));
+
+  try {
+    const portA = (srvA.address() as { port: number }).port;
+    const portB = (srvB.address() as { port: number }).port;
+
+    // 1. Register user on Container A
+    const regRes = await fetch(`http://127.0.0.1:${portA}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fullName: 'Grace Coldstart',
+        email: 'grace-coldstart@brand.io',
+        password: 'StrongPassword2026!',
+        workspaceName: 'Grace Studio',
+      }),
+    });
+    assert.equal(regRes.status, 201);
+
+    // 2. Login on completely fresh cold-start Container B (empty SQLite + RTDB 401)
+    const loginOk = await fetch(`http://127.0.0.1:${portB}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'grace-coldstart@brand.io',
+        password: 'StrongPassword2026!',
+      }),
+    });
+    assert.equal(loginOk.status, 200, 'Expected login to succeed on cold-start container via Firebase Auth');
+    const loginBody = (await loginOk.json()) as {
+      user: { email: string; fullName: string };
+      workspaces: { subscription?: { status: string; isTrialActive: boolean } }[];
+      token: string;
+    };
+    assert.equal(loginBody.user.email, 'grace-coldstart@brand.io');
+    assert.equal(loginBody.user.fullName, 'Grace Coldstart');
+    assert.equal(loginBody.workspaces[0].subscription?.status, 'trialing');
+    assert.equal(loginBody.workspaces[0].subscription?.isTrialActive, true);
+    assert.ok(loginBody.token.length > 20);
+
+    // 3. Wrong password must still fail with 401
+    const loginWrong = await fetch(`http://127.0.0.1:${portB}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'grace-coldstart@brand.io',
+        password: 'WrongPassword999!',
+      }),
+    });
+    assert.equal(loginWrong.status, 401);
+  } finally {
+    setFirebaseAuthFetchForTest(null);
+    setRtdbFetchTransportForTest(null);
+    await new Promise<void>((resolve) => srvA.close(() => resolve()));
+    await new Promise<void>((resolve) => srvB.close(() => resolve()));
+    dbA.close();
+    dbB.close();
+  }
+});
+
+test('firebase-rtdb-schema.json is valid RTDB import JSON and _schema keys are safely ignored on hydration', async () => {
+  const schemaPath = path.resolve(process.cwd(), 'firebase-rtdb-schema.json');
+  assert.ok(fs.existsSync(schemaPath), 'Expected firebase-rtdb-schema.json to exist');
+  const parsed = JSON.parse(fs.readFileSync(schemaPath, 'utf8')) as {
+    livingtech_app: { meta: Record<string, unknown>; tables: Record<string, Record<string, unknown>> };
+  };
+  assert.ok(parsed.livingtech_app?.tables?.users?._schema);
+  assert.ok(parsed.livingtech_app?.tables?.workspaces?._schema);
+  assert.ok(parsed.livingtech_app?.tables?.subscriptions?._schema);
+
+  setRtdbFetchTransportForTest(async () => {
+    return new Response(JSON.stringify(parsed.livingtech_app), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  });
+
+  const db = initDatabase(':memory:', { forceDriver: 'node:sqlite' });
+  try {
+    const ok = await hydrateDatabaseFromRtdb(db, { force: true });
+    assert.equal(ok, true);
+    // Ensure _schema placeholder was NOT inserted as a real user row
+    const users = db.prepare('SELECT email FROM users').all() as { email: string }[];
+    assert.ok(!users.some((u) => u.email === 'TEXT'), '_schema placeholder must not be inserted into users table');
+  } finally {
+    setRtdbFetchTransportForTest(null);
+    db.close();
   }
 });

@@ -33,6 +33,9 @@ import {
   getEffectivePlanTier,
   getRequiredPlanForRoute,
   getTierDisplayName,
+  getTrialDaysRemaining,
+  isTrialActive,
+  isTrialExpired,
 } from '../utils/planEntitlements';
 import { PWAInstallButton } from './PWAControls';
 import { SubscriptionGate } from './SubscriptionGate';
@@ -140,6 +143,9 @@ export const AppShell: React.FC<AppShellProps> = ({
   const canAccessAdmin = hasSuperAdminAccess(user?.role);
 
   const currentPlanTier = getEffectivePlanTier(activeWorkspace?.subscription);
+  const trialActive = isTrialActive(activeWorkspace?.subscription);
+  const trialExpired = isTrialExpired(activeWorkspace?.subscription);
+  const trialDaysLeft = getTrialDaysRemaining(activeWorkspace?.subscription);
 
   const renderPage = () => {
     if (!canAccessRoute(activeWorkspace?.subscription, route)) {
@@ -262,13 +268,21 @@ export const AppShell: React.FC<AppShellProps> = ({
                 setDrawerOpen(false);
               }}
               className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-bold transition-colors ${
-                currentPlanTier === 'none'
+                trialExpired || currentPlanTier === 'none'
                   ? 'border-amber-400/50 bg-amber-500/20 text-amber-200 hover:bg-amber-500/30'
+                  : trialActive
+                  ? 'border-emerald-400/45 bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30'
                   : 'border-sky-400/40 bg-sky-500/15 text-sky-100 hover:bg-sky-500/25'
               }`}
             >
               <CreditCard className="h-3 w-3 shrink-0" />
-              {currentPlanTier === 'none' ? 'No Plan · Subscribe' : `${getTierDisplayName(currentPlanTier)} Plan`}
+              {trialActive
+                ? `Free Trial · ${trialDaysLeft}d left`
+                : trialExpired
+                ? 'Trial Ended · Subscribe'
+                : currentPlanTier === 'none'
+                ? 'Subscribe & Pay'
+                : `${getTierDisplayName(currentPlanTier)} Plan`}
             </button>
             <button
               type="button"
@@ -469,6 +483,31 @@ export const AppShell: React.FC<AppShellProps> = ({
                 className="font-bold text-blue-700 hover:underline whitespace-nowrap"
               >
                 Verify in Profile Settings
+              </button>
+            </div>
+          )}
+
+          {activeWorkspace && route !== 'billing' && (trialActive || trialExpired) && (
+            <div
+              role="status"
+              className={`mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-xs font-semibold shadow-xs ${
+                trialExpired
+                  ? 'border-rose-400/50 bg-rose-950/75 text-white'
+                  : 'border-sky-400/40 bg-[#0b1f52] text-white'
+              }`}
+            >
+              <span>
+                {trialExpired
+                  ? 'Your 7-day free trial has ended. Subscribe and complete payment to continue accessing your workspace tools.'
+                  : `7-Day Free Trial Active — ${trialDaysLeft} day${trialDaysLeft === 1 ? '' : 's'} remaining. After 7 days, a paid subscription is required.`}
+              </span>
+              <button
+                type="button"
+                onClick={() => onNavigate('billing')}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-blue-500 transition-colors whitespace-nowrap shrink-0"
+              >
+                <CreditCard className="h-3.5 w-3.5" />
+                {trialExpired ? 'Subscribe & Pay Now' : 'View Plans & Payment'}
               </button>
             </div>
           )}

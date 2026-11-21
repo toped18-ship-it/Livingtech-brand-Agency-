@@ -57,13 +57,23 @@ const ADMIN_SECTIONS: AdminSection[] = [
   'support',
 ];
 
+const PENDING_ROUTE_KEY = 'lt_pending_customer_route';
+export const PENDING_CHECKOUT_PLAN_KEY = 'lt_pending_checkout_plan';
+
 function parsePathname(pathname: string): AppRouteState {
   const clean = pathname.replace(/\/+$/, '') || '/';
   if (clean === '/' || clean === '/login') return { area: 'public', page: 'login' };
 
   const segments = clean.slice(1).split('/');
+  if (segments[0] === 'billing' || segments[0] === 'subscription' || segments[0] === 'subscriptions') {
+    return { area: 'customer', page: 'billing' };
+  }
   if (segments[0] === 'app') {
-    const sub = (segments[1] || 'overview') as CustomerRoute;
+    const rawSub = segments[1] || 'overview';
+    if (rawSub === 'subscription' || rawSub === 'subscriptions') {
+      return { area: 'customer', page: 'billing' };
+    }
+    const sub = rawSub as CustomerRoute;
     return {
       area: 'customer',
       page: CUSTOMER_ROUTES.includes(sub) ? sub : 'overview',
@@ -137,23 +147,68 @@ const RouterView: React.FC = () => {
     }
   }, []);
 
-  // Auth route protection & post-login redirect
+  // Auth route protection & post-login redirect (preserves intended billing/subscription destination)
   useEffect(() => {
     if (loading) return;
     if (!user && (routeState.area === 'customer' || routeState.area === 'admin')) {
+      if (routeState.area === 'customer' && routeState.page === 'billing') {
+        try {
+          sessionStorage.setItem(PENDING_ROUTE_KEY, 'billing');
+        } catch {
+          // Ignore storage restrictions
+        }
+      }
       navigate({ area: 'public', page: 'login' }, true);
     } else if (
       user &&
       routeState.area === 'public' &&
       (routeState.page === 'login' || routeState.page === 'register')
     ) {
-      if (hasSuperAdminAccess(user.role)) {
+      let pendingRoute: CustomerRoute | null = null;
+      try {
+        const stored = sessionStorage.getItem(PENDING_ROUTE_KEY);
+        if (stored && CUSTOMER_ROUTES.includes(stored as CustomerRoute)) {
+          pendingRoute = stored as CustomerRoute;
+        }
+        sessionStorage.removeItem(PENDING_ROUTE_KEY);
+      } catch {
+        // Ignore storage restrictions
+      }
+
+      if (pendingRoute === 'billing') {
+        navigate({ area: 'customer', page: 'billing' }, true);
+      } else if (hasSuperAdminAccess(user.role)) {
         navigate({ area: 'admin', page: 'overview' }, true);
       } else {
-        navigate({ area: 'customer', page: 'overview' }, true);
+        navigate({ area: 'customer', page: pendingRoute || 'overview' }, true);
       }
     }
   }, [loading, user, routeState, navigate]);
+
+  const handleSelectPricingPlan = useCallback(
+    (planCode: string, billingCycle: 'monthly' | 'annual') => {
+      try {
+        sessionStorage.setItem(
+          PENDING_CHECKOUT_PLAN_KEY,
+          JSON.stringify({ planCode, billingCycle })
+        );
+      } catch {
+        // Ignore storage restrictions
+      }
+
+      if (user) {
+        navigate({ area: 'customer', page: 'billing' });
+      } else {
+        try {
+          sessionStorage.setItem(PENDING_ROUTE_KEY, 'billing');
+        } catch {
+          // Ignore
+        }
+        navigate({ area: 'public', page: 'register' });
+      }
+    },
+    [user, navigate]
+  );
 
   if (loading) {
     return (
@@ -179,6 +234,7 @@ const RouterView: React.FC = () => {
       <PublicPortal
         page={publicPage}
         onNavigate={(page) => navigate({ area: 'public', page })}
+        onSelectPlan={handleSelectPricingPlan}
       />
     );
   }
@@ -215,11 +271,12 @@ const RouterView: React.FC = () => {
         page={routeState.page}
         onNavigate={(page) => {
           if (page === 'login' || page === 'register') {
-            navigate({ area: 'customer', page: 'overview' });
+            navigate({ area: 'customer', page: routeState.page === 'pricing' ? 'billing' : 'overview' });
           } else {
             navigate({ area: 'public', page });
           }
         }}
+        onSelectPlan={handleSelectPricingPlan}
       />
     );
   }

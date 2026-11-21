@@ -7,6 +7,7 @@ import {
   canAccessFeature,
   getEffectivePlanTier,
   getTierDisplayName,
+  isTrialExpired,
 } from '../../src/utils/planEntitlements';
 
 export function createWorkspaceFeatureGuard(db: DbInstance, feature: FeatureKey) {
@@ -21,9 +22,12 @@ export function createWorkspaceFeatureGuard(db: DbInstance, feature: FeatureKey)
       const requiredName = getTierDisplayName(meta.requiredTier);
       const currentTier = getEffectivePlanTier(subscription);
       const currentName = getTierDisplayName(currentTier);
+      const expired = isTrialExpired(subscription);
       return res.status(403).json({
-        error: `${meta.label} is not available on your current plan (${currentName}). Subscribe to the ${requiredName} plan under Billing & Subscriptions to unlock this feature.`,
-        code: 'SUBSCRIPTION_REQUIRED',
+        error: expired
+          ? `Your 7-day free trial has ended. Subscribe and complete payment for the ${requiredName} plan under Billing & Subscriptions to continue using ${meta.label}.`
+          : `${meta.label} is not available on your current plan (${currentName}). Subscribe to the ${requiredName} plan under Billing & Subscriptions to unlock this feature.`,
+        code: expired ? 'TRIAL_EXPIRED' : 'SUBSCRIPTION_REQUIRED',
         feature,
         currentPlan: currentTier,
         requiredPlan: meta.requiredTier,

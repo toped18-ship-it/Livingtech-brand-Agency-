@@ -81,9 +81,10 @@ export type PublicPage =
 interface PublicPortalProps {
   page: PublicPage;
   onNavigate: (page: PublicPage) => void;
+  onSelectPlan?: (planCode: string, billingCycle: 'monthly' | 'annual') => void;
 }
 
-export const PublicPortal: React.FC<PublicPortalProps> = ({ page, onNavigate }) => {
+export const PublicPortal: React.FC<PublicPortalProps> = ({ page, onNavigate, onSelectPlan }) => {
   const { login, register, loginWithGoogle, sessionNotice, clearSessionNotice } = useAuth();
   const { settings } = useSystemSettings();
 
@@ -547,9 +548,9 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ page, onNavigate }) 
 
               {page === 'register' && (
                 <div>
-                  <h2 className="font-display text-2xl font-bold text-slate-900">Create your brand workspace</h2>
+                  <h2 className="font-display text-2xl font-bold text-slate-900">Start your 7-day free trial</h2>
                   <p className="mt-1.5 text-sm text-slate-600">
-                    Provision an isolated multi-tenant workspace and select a subscription package to unlock your brand tools.
+                    Provision an isolated multi-tenant workspace free for 7 days with 100 trial AI credits. After 7 days, choose Basic, Pro, or Enterprise to continue.
                   </p>
 
                   <form onSubmit={handleRegister} className="mt-6 space-y-4">
@@ -1028,9 +1029,9 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ page, onNavigate }) 
           <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
             <div className="flex flex-col items-start justify-between gap-4 border-b border-slate-200 pb-6 md:flex-row md:items-end">
               <div>
-                <h1 className="font-display text-3xl font-bold text-slate-900">Transparent SaaS Plans for Brands & Agencies</h1>
+                <h1 className="font-display text-3xl font-bold text-slate-900">Free for 7 Days, Then Transparent SaaS Plans</h1>
                 <p className="mt-2 max-w-2xl text-sm text-slate-600">
-                  Every tier includes isolated tenant workspaces, server-side OAuth security, AI Content Studio credits, and responsive PWA/mobile readiness.
+                  Every new workspace starts with a 7-day free trial (100 trial AI credits). After 7 days, a paid subscription is required to continue accessing your workspace tools.
                 </p>
               </div>
               <div className="inline-flex items-center gap-1 rounded-lg bg-slate-200/75 p-1">
@@ -1108,14 +1109,16 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ page, onNavigate }) 
 
                     <button
                       type="button"
-                      onClick={() => onNavigate('register')}
+                      onClick={() =>
+                        onSelectPlan ? onSelectPlan(plan.code, billingCycle) : onNavigate('register')
+                      }
                       className={`mt-6 w-full rounded-lg px-4 py-2.5 text-xs font-semibold transition-colors ${
                         isFeatured
                           ? 'lt-btn-light bg-white text-blue-950 hover:bg-blue-50'
                           : 'bg-blue-700 text-white hover:bg-blue-800'
                       }`}
                     >
-                      Start with {plan.name}
+                      Choose {plan.name} &amp; Subscribe
                     </button>
                   </div>
                 );

@@ -1,0 +1,1264 @@
+{
+  "livingtech_app": {
+    "meta": {
+      "project": "livingtech-brand-agency",
+      "schemaVersion": "2026-01",
+      "updatedAt": "2026-11-21T13:46:57.849Z",
+      "userCount": 0,
+      "workspaceCount": 0,
+      "postCount": 0
+    },
+    "tables": {
+      "roles": {
+        "_schema": {
+          "id": "TEXT",
+          "slug": "TEXT",
+          "name": "TEXT",
+          "description": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        },
+        "dbc82bf9-6797-402e-af06-e1bfd0f8ffe9": {
+          "id": "dbc82bf9-6797-402e-af06-e1bfd0f8ffe9",
+          "slug": "customer",
+          "name": "Customer",
+          "description": "Standard multi-tenant workspace owner",
+          "created_at": "2026-11-21T13:46:57.774Z",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "6344f532-98cf-4ed0-8079-924ae121d719": {
+          "id": "6344f532-98cf-4ed0-8079-924ae121d719",
+          "slug": "workspace_admin",
+          "name": "Workspace Admin",
+          "description": "Manages brand settings, billing, and team members",
+          "created_at": "2026-11-21T13:46:57.774Z",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "848d78de-7bbd-4a48-abba-c983c87abbdf": {
+          "id": "848d78de-7bbd-4a48-abba-c983c87abbdf",
+          "slug": "editor",
+          "name": "Content Editor",
+          "description": "Creates and schedules posts and media assets",
+          "created_at": "2026-11-21T13:46:57.774Z",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "b5a7293b-6e48-4c6a-bd96-9168d7b61e09": {
+          "id": "b5a7293b-6e48-4c6a-bd96-9168d7b61e09",
+          "slug": "viewer",
+          "name": "Analyst Viewer",
+          "description": "Read-only access to calendar and analytics",
+          "created_at": "2026-11-21T13:46:57.774Z",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "a8d093d2-48ee-4eed-8f8b-d7a636faf57b": {
+          "id": "a8d093d2-48ee-4eed-8f8b-d7a636faf57b",
+          "slug": "super_admin",
+          "name": "Super Administrator",
+          "description": "Full platform administration and governance",
+          "created_at": "2026-11-21T13:46:57.774Z",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        }
+      },
+      "permissions": {
+        "_schema": {
+          "id": "TEXT",
+          "role_id": "TEXT",
+          "resource": "TEXT",
+          "action": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "users": {
+        "_schema": {
+          "id": "TEXT",
+          "auth_provider": "TEXT",
+          "external_uid": "TEXT",
+          "email": "TEXT",
+          "password_hash": "TEXT",
+          "full_name": "TEXT",
+          "avatar_url": "TEXT",
+          "role_slug": "TEXT",
+          "email_verified": "INTEGER",
+          "status": "TEXT",
+          "timezone": "TEXT",
+          "preferred_language": "TEXT",
+          "last_login_at": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "sessions": {
+        "_schema": {
+          "id": "TEXT",
+          "user_id": "TEXT",
+          "token_hash": "TEXT",
+          "expires_at": "TEXT",
+          "created_at": "TEXT"
+        }
+      },
+      "auth_tokens": {
+        "_schema": {
+          "id": "TEXT",
+          "user_id": "TEXT",
+          "token_type": "TEXT",
+          "token_value": "TEXT",
+          "expires_at": "TEXT",
+          "used_at": "TEXT",
+          "created_at": "TEXT"
+        }
+      },
+      "organisations": {
+        "_schema": {
+          "id": "TEXT",
+          "owner_user_id": "TEXT",
+          "name": "TEXT",
+          "slug": "TEXT",
+          "billing_email": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "workspaces": {
+        "_schema": {
+          "id": "TEXT",
+          "organisation_id": "TEXT",
+          "owner_user_id": "TEXT",
+          "name": "TEXT",
+          "slug": "TEXT",
+          "timezone": "TEXT",
+          "preferred_language": "TEXT",
+          "ai_credits_balance": "INTEGER",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "workspace_members": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "user_id": "TEXT",
+          "invited_email": "TEXT",
+          "role_slug": "TEXT",
+          "status": "TEXT",
+          "invited_by": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "brand_profiles": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "brand_name": "TEXT",
+          "logo_url": "TEXT",
+          "primary_color": "TEXT",
+          "secondary_color": "TEXT",
+          "accent_color": "TEXT",
+          "business_description": "TEXT",
+          "industry": "TEXT",
+          "target_audience": "TEXT",
+          "tone_of_voice": "TEXT",
+          "preferred_language": "TEXT",
+          "timezone": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT",
+          "products_services": "TEXT",
+          "business_goals": "TEXT",
+          "banned_words_json": "TEXT",
+          "brand_tone_rules": "TEXT",
+          "max_posts_per_day": "INTEGER",
+          "auto_reply_enabled": "INTEGER",
+          "brand_documents_json": "TEXT"
+        }
+      },
+      "social_platforms": {
+        "_schema": {
+          "id": "TEXT",
+          "key": "TEXT",
+          "display_name": "TEXT",
+          "oauth_authorize_url": "TEXT",
+          "oauth_token_url": "TEXT",
+          "scopes": "TEXT",
+          "is_enabled": "INTEGER",
+          "created_at": "TEXT",
+          "updated_at": "TEXT",
+          "client_id_override": "TEXT",
+          "client_secret_override": "TEXT",
+          "app_status": "TEXT",
+          "developer_review_status": "TEXT",
+          "rate_limit_rpm": "INTEGER",
+          "last_health_check_at": "TEXT",
+          "last_api_error": "TEXT"
+        },
+        "8efe0db3-d25e-4d9e-b6fb-ca777111bcdf": {
+          "id": "8efe0db3-d25e-4d9e-b6fb-ca777111bcdf",
+          "key": "facebook",
+          "display_name": "Facebook Pages",
+          "oauth_authorize_url": "https://www.facebook.com/v21.0/dialog/oauth",
+          "oauth_token_url": "https://graph.facebook.com/v21.0/oauth/access_token",
+          "scopes": "pages_show_list,pages_read_engagement,pages_manage_posts,pages_manage_engagement",
+          "is_enabled": 1,
+          "created_at": "2026-11-21T13:46:57.774Z",
+          "updated_at": "2026-11-21T13:46:57.774Z",
+          "client_id_override": null,
+          "client_secret_override": null,
+          "app_status": "missing_credentials",
+          "developer_review_status": "not_submitted",
+          "rate_limit_rpm": 200,
+          "last_health_check_at": null,
+          "last_api_error": null
+        },
+        "d84d0236-a6cb-4ce2-883e-623084b9a803": {
+          "id": "d84d0236-a6cb-4ce2-883e-623084b9a803",
+          "key": "instagram",
+          "display_name": "Instagram Professional",
+          "oauth_authorize_url": "https://www.facebook.com/v21.0/dialog/oauth",
+          "oauth_token_url": "https://graph.facebook.com/v21.0/oauth/access_token",
+          "scopes": "instagram_basic,instagram_content_publish,instagram_manage_insights,instagram_manage_comments,pages_show_list",
+          "is_enabled": 1,
+          "created_at": "2026-11-21T13:46:57.774Z",
+          "updated_at": "2026-11-21T13:46:57.774Z",
+          "client_id_override": null,
+          "client_secret_override": null,
+          "app_status": "missing_credentials",
+          "developer_review_status": "not_submitted",
+          "rate_limit_rpm": 200,
+          "last_health_check_at": null,
+          "last_api_error": null
+        },
+        "2a5d2474-e17f-402a-b90a-3297bfd1be8c": {
+          "id": "2a5d2474-e17f-402a-b90a-3297bfd1be8c",
+          "key": "tiktok",
+          "display_name": "TikTok",
+          "oauth_authorize_url": "https://www.tiktok.com/v2/auth/authorize/",
+          "oauth_token_url": "https://open.tiktokapis.com/v2/oauth/token/",
+          "scopes": "user.info.basic,user.info.stats,video.list,video.publish",
+          "is_enabled": 1,
+          "created_at": "2026-11-21T13:46:57.774Z",
+          "updated_at": "2026-11-21T13:46:57.774Z",
+          "client_id_override": null,
+          "client_secret_override": null,
+          "app_status": "missing_credentials",
+          "developer_review_status": "not_submitted",
+          "rate_limit_rpm": 600,
+          "last_health_check_at": null,
+          "last_api_error": null
+        },
+        "1dc04667-07dc-4aaa-9531-77c95143b72c": {
+          "id": "1dc04667-07dc-4aaa-9531-77c95143b72c",
+          "key": "linkedin",
+          "display_name": "LinkedIn",
+          "oauth_authorize_url": "https://www.linkedin.com/oauth/v2/authorization",
+          "oauth_token_url": "https://www.linkedin.com/oauth/v2/accessToken",
+          "scopes": "openid,profile,email,w_member_social,r_organization_admin,w_organization_social",
+          "is_enabled": 1,
+          "created_at": "2026-11-21T13:46:57.774Z",
+          "updated_at": "2026-11-21T13:46:57.774Z",
+          "client_id_override": null,
+          "client_secret_override": null,
+          "app_status": "missing_credentials",
+          "developer_review_status": "not_submitted",
+          "rate_limit_rpm": 100,
+          "last_health_check_at": null,
+          "last_api_error": null
+        },
+        "1a6c0a61-1f1c-4c5d-aab2-ea5d55bc8ab5": {
+          "id": "1a6c0a61-1f1c-4c5d-aab2-ea5d55bc8ab5",
+          "key": "youtube",
+          "display_name": "YouTube",
+          "oauth_authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
+          "oauth_token_url": "https://oauth2.googleapis.com/token",
+          "scopes": "https://www.googleapis.com/auth/youtube.readonly,https://www.googleapis.com/auth/youtube.upload,https://www.googleapis.com/auth/youtube.force-ssl,https://www.googleapis.com/auth/yt-analytics.readonly",
+          "is_enabled": 1,
+          "created_at": "2026-11-21T13:46:57.774Z",
+          "updated_at": "2026-11-21T13:46:57.774Z",
+          "client_id_override": null,
+          "client_secret_override": null,
+          "app_status": "missing_credentials",
+          "developer_review_status": "not_submitted",
+          "rate_limit_rpm": 300,
+          "last_health_check_at": null,
+          "last_api_error": null
+        },
+        "33ca0aae-2e1a-4462-91c7-c472211beaee": {
+          "id": "33ca0aae-2e1a-4462-91c7-c472211beaee",
+          "key": "x",
+          "display_name": "X (Twitter)",
+          "oauth_authorize_url": "https://twitter.com/i/oauth2/authorize",
+          "oauth_token_url": "https://api.twitter.com/2/oauth2/token",
+          "scopes": "users.read,tweet.read,tweet.write,offline.access",
+          "is_enabled": 1,
+          "created_at": "2026-11-21T13:46:57.774Z",
+          "updated_at": "2026-11-21T13:46:57.774Z",
+          "client_id_override": null,
+          "client_secret_override": null,
+          "app_status": "missing_credentials",
+          "developer_review_status": "not_submitted",
+          "rate_limit_rpm": 60,
+          "last_health_check_at": null,
+          "last_api_error": null
+        },
+        "060152d7-9d30-4fd3-a189-e8cdaebb7551": {
+          "id": "060152d7-9d30-4fd3-a189-e8cdaebb7551",
+          "key": "pinterest",
+          "display_name": "Pinterest",
+          "oauth_authorize_url": "https://www.pinterest.com/oauth/",
+          "oauth_token_url": "https://api.pinterest.com/v5/oauth/token",
+          "scopes": "user_accounts:read,boards:read,pins:read,pins:write",
+          "is_enabled": 1,
+          "created_at": "2026-11-21T13:46:57.774Z",
+          "updated_at": "2026-11-21T13:46:57.774Z",
+          "client_id_override": null,
+          "client_secret_override": null,
+          "app_status": "missing_credentials",
+          "developer_review_status": "not_submitted",
+          "rate_limit_rpm": 120,
+          "last_health_check_at": null,
+          "last_api_error": null
+        },
+        "2aae0fb9-5084-430b-9316-1ec933deb1dd": {
+          "id": "2aae0fb9-5084-430b-9316-1ec933deb1dd",
+          "key": "google_business",
+          "display_name": "Google Business Profile",
+          "oauth_authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
+          "oauth_token_url": "https://oauth2.googleapis.com/token",
+          "scopes": "https://www.googleapis.com/auth/business.manage",
+          "is_enabled": 1,
+          "created_at": "2026-11-21T13:46:57.774Z",
+          "updated_at": "2026-11-21T13:46:57.774Z",
+          "client_id_override": null,
+          "client_secret_override": null,
+          "app_status": "missing_credentials",
+          "developer_review_status": "not_submitted",
+          "rate_limit_rpm": 120,
+          "last_health_check_at": null,
+          "last_api_error": null
+        }
+      },
+      "social_accounts": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "connected_by_user_id": "TEXT",
+          "platform_id": "TEXT",
+          "external_account_id": "TEXT",
+          "account_handle": "TEXT",
+          "account_name": "TEXT",
+          "avatar_url": "TEXT",
+          "connection_status": "TEXT",
+          "last_synced_at": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT",
+          "account_type": "TEXT",
+          "account_description": "TEXT",
+          "business_category": "TEXT",
+          "followers_count": "INTEGER",
+          "permissions_status": "TEXT",
+          "granted_scopes": "TEXT",
+          "capabilities_json": "TEXT",
+          "publishing_preferences_json": "TEXT",
+          "last_error": "TEXT"
+        }
+      },
+      "social_account_tokens": {
+        "_schema": {
+          "id": "TEXT",
+          "social_account_id": "TEXT",
+          "workspace_id": "TEXT",
+          "connected_by_user_id": "TEXT",
+          "encrypted_access_token": "TEXT",
+          "encrypted_refresh_token": "TEXT",
+          "token_type": "TEXT",
+          "scope": "TEXT",
+          "expires_at": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT",
+          "refresh_expires_at": "TEXT",
+          "revoked_at": "TEXT",
+          "last_refreshed_at": "TEXT"
+        }
+      },
+      "subscription_plans": {
+        "_schema": {
+          "id": "TEXT",
+          "code": "TEXT",
+          "name": "TEXT",
+          "tagline": "TEXT",
+          "monthly_price_cents": "INTEGER",
+          "annual_price_cents": "INTEGER",
+          "max_workspaces": "INTEGER",
+          "max_social_accounts": "INTEGER",
+          "max_team_members": "INTEGER",
+          "monthly_ai_credits": "INTEGER",
+          "features_json": "TEXT",
+          "is_active": "INTEGER",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        },
+        "ec816257-6ca8-4062-aae7-c5aa7c613f5c": {
+          "id": "ec816257-6ca8-4062-aae7-c5aa7c613f5c",
+          "code": "basic",
+          "name": "Basic",
+          "tagline": "Essential brand publishing & AI content creation for solo founders",
+          "monthly_price_cents": 2900,
+          "annual_price_cents": 29000,
+          "max_workspaces": 1,
+          "max_social_accounts": 5,
+          "max_team_members": 1,
+          "monthly_ai_credits": 250,
+          "features_json": "[\"1 Brand Workspace · Up to 5 Social Accounts\",\"250 Monthly AI Studio Credits\",\"Social Accounts & Official OAuth Connection\",\"AI Content Studio (Posts, Repurpose, Captions & Hashtags)\",\"Content Calendar & Media Library\"]",
+          "is_active": 1,
+          "created_at": "2026-11-21T13:46:57.774Z",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "e04f9006-d204-4daa-a17f-3b02f552b648": {
+          "id": "e04f9006-d204-4daa-a17f-3b02f552b648",
+          "code": "pro",
+          "name": "Pro",
+          "tagline": "Full creative, automation, engagement & analytics suite for growing teams",
+          "monthly_price_cents": 7900,
+          "annual_price_cents": 79000,
+          "max_workspaces": 5,
+          "max_social_accounts": 20,
+          "max_team_members": 10,
+          "monthly_ai_credits": 2000,
+          "features_json": "[\"Up to 5 Brand Workspaces · Up to 20 Social Accounts\",\"2,000 Monthly AI Credits · Up to 10 Team Seats\",\"Everything in Basic Plan included\",\"AI Graphic Designer & Auto Publisher Queue\",\"Publishing History, Engagement Manager, Live Analytics & Team RBAC\"]",
+          "is_active": 1,
+          "created_at": "2026-11-21T13:46:57.774Z",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "8a2ef428-d1a3-4ae4-be4c-452f057ee6ff": {
+          "id": "8a2ef428-d1a3-4ae4-be4c-452f057ee6ff",
+          "code": "enterprise",
+          "name": "Enterprise",
+          "tagline": "Complete agency intelligence, AI Brand Strategy & multi-brand governance",
+          "monthly_price_cents": 29900,
+          "annual_price_cents": 299000,
+          "max_workspaces": 50,
+          "max_social_accounts": 250,
+          "max_team_members": 35,
+          "monthly_ai_credits": 15000,
+          "features_json": "[\"Up to 50 Brand Workspaces · Up to 250 Social Accounts\",\"15,000 Monthly AI Credits · Up to 35 Team Seats\",\"Everything in Pro Plan included\",\"AI Brand Strategy & Executive Audience Intelligence\",\"Multi-Brand Governance, Compliance Audit Logs & Priority Support\"]",
+          "is_active": 1,
+          "created_at": "2026-11-21T13:46:57.774Z",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        }
+      },
+      "subscriptions": {
+        "_schema": {
+          "id": "TEXT",
+          "organisation_id": "TEXT",
+          "workspace_id": "TEXT",
+          "plan_id": "TEXT",
+          "status": "TEXT",
+          "billing_cycle": "TEXT",
+          "current_period_start": "TEXT",
+          "current_period_end": "TEXT",
+          "provider_subscription_id": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "system_settings": {
+        "_schema": {
+          "key": "TEXT",
+          "value": "TEXT",
+          "description": "TEXT",
+          "updated_at": "TEXT"
+        },
+        "allow_new_registrations": {
+          "key": "allow_new_registrations",
+          "value": "true",
+          "description": "Allow self-service customer registrations via email and OAuth",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "require_email_verification": {
+          "key": "require_email_verification",
+          "value": "true",
+          "description": "Require email verification before production auto-publishing",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "default_trial_ai_credits": {
+          "key": "default_trial_ai_credits",
+          "value": "0",
+          "description": "Initial AI credits allocated before subscribing to a package",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "max_publishing_retries": {
+          "key": "max_publishing_retries",
+          "value": "3",
+          "description": "Automatic retry threshold before marking a publishing job as failed",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "maintenance_mode": {
+          "key": "maintenance_mode",
+          "value": "false",
+          "description": "Temporarily restrict non-admin write operations during maintenance",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "app_name": {
+          "key": "app_name",
+          "value": "LIVINGTECH BRAND AGENCY",
+          "description": "Global application name displayed in headers and titles",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "app_tagline": {
+          "key": "app_tagline",
+          "value": "Enterprise Multi-Tenant Social Media & Brand Management SaaS",
+          "description": "Global application subtitle / tagline",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "app_logo_url": {
+          "key": "app_logo_url",
+          "value": "/assets/aistudio/20261112_184805_8a13799e.jpg",
+          "description": "Global application logo image URL",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "app_footer_text": {
+          "key": "app_footer_text",
+          "value": "© 2026 LIVINGTECH BRAND AGENCY. All rights reserved.",
+          "description": "Global footer copyright text",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "app_welcome_message": {
+          "key": "app_welcome_message",
+          "value": "Welcome back to your enterprise command center.",
+          "description": "Welcome message on dashboard",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "app_font_color": {
+          "key": "app_font_color",
+          "value": "#ffffff",
+          "description": "Global application font color (default pure white)",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "clean_slate_demo_purge_v1": {
+          "key": "clean_slate_demo_purge_v1",
+          "value": "true",
+          "description": "One-time purge of legacy demo accounts and sample data",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        }
+      },
+      "content_campaigns": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "created_by_user_id": "TEXT",
+          "name": "TEXT",
+          "objective": "TEXT",
+          "description": "TEXT",
+          "color_hex": "TEXT",
+          "platforms_json": "TEXT",
+          "status": "TEXT",
+          "start_date": "TEXT",
+          "end_date": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "content_posts": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "author_user_id": "TEXT",
+          "title": "TEXT",
+          "caption": "TEXT",
+          "platform_key": "TEXT",
+          "status": "TEXT",
+          "campaign_tag": "TEXT",
+          "hashtags_json": "TEXT",
+          "scheduled_for": "TEXT",
+          "published_at": "TEXT",
+          "failure_reason": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "content_variants": {
+        "_schema": {
+          "id": "TEXT",
+          "content_post_id": "TEXT",
+          "workspace_id": "TEXT",
+          "platform_key": "TEXT",
+          "variant_label": "TEXT",
+          "body_text": "TEXT",
+          "hashtags_json": "TEXT",
+          "call_to_action": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "media_library": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "uploaded_by": "TEXT",
+          "file_name": "TEXT",
+          "asset_type": "TEXT",
+          "mime_type": "TEXT",
+          "storage_path": "TEXT",
+          "public_url": "TEXT",
+          "file_size_bytes": "INTEGER",
+          "folder": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "content_assets": {
+        "_schema": {
+          "id": "TEXT",
+          "content_post_id": "TEXT",
+          "media_id": "TEXT",
+          "workspace_id": "TEXT",
+          "sort_order": "INTEGER",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "publishing_schedules": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "content_post_id": "TEXT",
+          "social_account_id": "TEXT",
+          "scheduled_at": "TEXT",
+          "timezone": "TEXT",
+          "recurrence_rule": "TEXT",
+          "is_active": "INTEGER",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "publishing_jobs": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "schedule_id": "TEXT",
+          "content_post_id": "TEXT",
+          "platform_key": "TEXT",
+          "job_status": "TEXT",
+          "attempt_count": "INTEGER",
+          "max_attempts": "INTEGER",
+          "last_error": "TEXT",
+          "run_at": "TEXT",
+          "completed_at": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "publishing_logs": {
+        "_schema": {
+          "id": "TEXT",
+          "publishing_job_id": "TEXT",
+          "workspace_id": "TEXT",
+          "log_level": "TEXT",
+          "message": "TEXT",
+          "provider_response_json": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "analytics_snapshots": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "social_account_id": "TEXT",
+          "platform_key": "TEXT",
+          "snapshot_date": "TEXT",
+          "impressions": "INTEGER",
+          "engagements": "INTEGER",
+          "clicks": "INTEGER",
+          "followers_total": "INTEGER",
+          "is_demo": "INTEGER",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "engagement_items": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "platform_key": "TEXT",
+          "author_name": "TEXT",
+          "author_handle": "TEXT",
+          "message_type": "TEXT",
+          "content": "TEXT",
+          "reply_text": "TEXT",
+          "status": "TEXT",
+          "is_demo": "INTEGER",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "notifications": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "user_id": "TEXT",
+          "category": "TEXT",
+          "title": "TEXT",
+          "body": "TEXT",
+          "is_read": "INTEGER",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "ai_usage": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "user_id": "TEXT",
+          "feature": "TEXT",
+          "model_name": "TEXT",
+          "credits_used": "INTEGER",
+          "prompt_tokens": "INTEGER",
+          "completion_tokens": "INTEGER",
+          "status": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "support_tickets": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "owner_user_id": "TEXT",
+          "subject": "TEXT",
+          "message": "TEXT",
+          "priority": "TEXT",
+          "status": "TEXT",
+          "admin_notes": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "audit_logs": {
+        "_schema": {
+          "id": "TEXT",
+          "actor_user_id": "TEXT",
+          "actor_email": "TEXT",
+          "workspace_id": "TEXT",
+          "action": "TEXT",
+          "resource_type": "TEXT",
+          "resource_id": "TEXT",
+          "metadata_json": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "ai_content_suggestions": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "user_id": "TEXT",
+          "platform_key": "TEXT",
+          "topic": "TEXT",
+          "keywords_json": "TEXT",
+          "objective": "TEXT",
+          "tone": "TEXT",
+          "headline": "TEXT",
+          "headline_options_json": "TEXT",
+          "post_copy": "TEXT",
+          "hashtags_json": "TEXT",
+          "call_to_action": "TEXT",
+          "best_time_note": "TEXT",
+          "variants_json": "TEXT",
+          "status": "TEXT",
+          "saved_post_id": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "oauth_states": {
+        "_schema": {
+          "state": "TEXT",
+          "workspace_id": "TEXT",
+          "user_id": "TEXT",
+          "platform_key": "TEXT",
+          "reconnect_account_id": "TEXT",
+          "encrypted_code_verifier": "TEXT",
+          "status": "TEXT",
+          "discovery_session_id": "TEXT",
+          "encrypted_pending_tokens": "TEXT",
+          "discovered_accounts_json": "TEXT",
+          "granted_scopes": "TEXT",
+          "error_message": "TEXT",
+          "expires_at": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "oauth_connection_logs": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "user_id": "TEXT",
+          "platform_key": "TEXT",
+          "social_account_id": "TEXT",
+          "event_type": "TEXT",
+          "status": "TEXT",
+          "message": "TEXT",
+          "error_code": "TEXT",
+          "metadata_json": "TEXT",
+          "created_at": "TEXT"
+        }
+      },
+      "platform_permissions": {
+        "_schema": {
+          "id": "TEXT",
+          "platform_key": "TEXT",
+          "scope_key": "TEXT",
+          "label": "TEXT",
+          "description": "TEXT",
+          "is_required": "INTEGER",
+          "requires_app_review": "INTEGER",
+          "approval_status": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "platform_capabilities": {
+        "_schema": {
+          "platform_key": "TEXT",
+          "text_publishing": "INTEGER",
+          "image_publishing": "INTEGER",
+          "video_publishing": "INTEGER",
+          "carousel_publishing": "INTEGER",
+          "story_publishing": "INTEGER",
+          "reels_publishing": "INTEGER",
+          "short_form_video_publishing": "INTEGER",
+          "comment_retrieval": "INTEGER",
+          "comment_responses": "INTEGER",
+          "analytics_retrieval": "INTEGER",
+          "notes": "TEXT",
+          "updated_at": "TEXT"
+        },
+        "facebook": {
+          "platform_key": "facebook",
+          "text_publishing": 1,
+          "image_publishing": 1,
+          "video_publishing": 1,
+          "carousel_publishing": 1,
+          "story_publishing": 1,
+          "reels_publishing": 1,
+          "short_form_video_publishing": 1,
+          "comment_retrieval": 1,
+          "comment_responses": 1,
+          "analytics_retrieval": 1,
+          "notes": "Requires Facebook Page Admin/Editor role and Meta App Review approval for pages_manage_posts and pages_read_engagement.",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "instagram": {
+          "platform_key": "instagram",
+          "text_publishing": 0,
+          "image_publishing": 1,
+          "video_publishing": 1,
+          "carousel_publishing": 1,
+          "story_publishing": 1,
+          "reels_publishing": 1,
+          "short_form_video_publishing": 1,
+          "comment_retrieval": 1,
+          "comment_responses": 1,
+          "analytics_retrieval": 1,
+          "notes": "Only Instagram Business & Creator accounts linked to a Facebook Page are supported. Text-only posts are not supported by Instagram Graph API.",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "tiktok": {
+          "platform_key": "tiktok",
+          "text_publishing": 0,
+          "image_publishing": 1,
+          "video_publishing": 1,
+          "carousel_publishing": 1,
+          "story_publishing": 0,
+          "reels_publishing": 0,
+          "short_form_video_publishing": 1,
+          "comment_retrieval": 0,
+          "comment_responses": 0,
+          "analytics_retrieval": 1,
+          "notes": "Requires TikTok Content Posting API audit before public direct publishing; un-audited apps publish to creator inbox/private only.",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "linkedin": {
+          "platform_key": "linkedin",
+          "text_publishing": 1,
+          "image_publishing": 1,
+          "video_publishing": 1,
+          "carousel_publishing": 1,
+          "story_publishing": 0,
+          "reels_publishing": 0,
+          "short_form_video_publishing": 0,
+          "comment_retrieval": 1,
+          "comment_responses": 1,
+          "analytics_retrieval": 1,
+          "notes": "Member publishing uses Share on LinkedIn product. Organization Page discovery, comments, and analytics require LinkedIn Community Management API approval.",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "youtube": {
+          "platform_key": "youtube",
+          "text_publishing": 0,
+          "image_publishing": 0,
+          "video_publishing": 1,
+          "carousel_publishing": 0,
+          "story_publishing": 0,
+          "reels_publishing": 0,
+          "short_form_video_publishing": 1,
+          "comment_retrieval": 1,
+          "comment_responses": 1,
+          "analytics_retrieval": 1,
+          "notes": "Supports long-form videos and Shorts via YouTube Data API v3. Google OAuth App Verification is required for production public uploads.",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "x": {
+          "platform_key": "x",
+          "text_publishing": 1,
+          "image_publishing": 1,
+          "video_publishing": 1,
+          "carousel_publishing": 0,
+          "story_publishing": 0,
+          "reels_publishing": 0,
+          "short_form_video_publishing": 0,
+          "comment_retrieval": 1,
+          "comment_responses": 1,
+          "analytics_retrieval": 1,
+          "notes": "Uses OAuth 2.0 Authorization Code with mandatory PKCE S256. Read/analytics endpoints depend on X API Basic/Pro tier quotas.",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "pinterest": {
+          "platform_key": "pinterest",
+          "text_publishing": 0,
+          "image_publishing": 1,
+          "video_publishing": 1,
+          "carousel_publishing": 0,
+          "story_publishing": 0,
+          "reels_publishing": 0,
+          "short_form_video_publishing": 1,
+          "comment_retrieval": 0,
+          "comment_responses": 0,
+          "analytics_retrieval": 1,
+          "notes": "Pinterest API v5 Standard Access approval is required for production publishing; Trial Access apps are limited to sandbox testing.",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        },
+        "google_business": {
+          "platform_key": "google_business",
+          "text_publishing": 1,
+          "image_publishing": 1,
+          "video_publishing": 0,
+          "carousel_publishing": 0,
+          "story_publishing": 0,
+          "reels_publishing": 0,
+          "short_form_video_publishing": 0,
+          "comment_retrieval": 1,
+          "comment_responses": 1,
+          "analytics_retrieval": 1,
+          "notes": "Requires Google Business Profile API access approval in Google Cloud Console. Supports Local Posts (text + photo) and Review responses per location.",
+          "updated_at": "2026-11-21T13:46:57.774Z"
+        }
+      },
+      "platform_sync_logs": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "social_account_id": "TEXT",
+          "platform_key": "TEXT",
+          "sync_type": "TEXT",
+          "status": "TEXT",
+          "items_synced": "INTEGER",
+          "rate_limit_remaining": "INTEGER",
+          "error_message": "TEXT",
+          "created_at": "TEXT"
+        }
+      },
+      "platform_webhook_events": {
+        "_schema": {
+          "id": "TEXT",
+          "platform_key": "TEXT",
+          "event_type": "TEXT",
+          "delivery_id": "TEXT",
+          "verified": "INTEGER",
+          "payload_json": "TEXT",
+          "processed_status": "TEXT",
+          "created_at": "TEXT"
+        }
+      },
+      "ai_brand_analyses": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "user_id": "TEXT",
+          "brand_summary": "TEXT",
+          "verified_facts_json": "TEXT",
+          "assumptions_json": "TEXT",
+          "audience_insights_json": "TEXT",
+          "content_themes_json": "TEXT",
+          "voice_guidelines_json": "TEXT",
+          "connected_sources_json": "TEXT",
+          "uploaded_sources_json": "TEXT",
+          "model_name": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "ai_content_strategies": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "user_id": "TEXT",
+          "title": "TEXT",
+          "goals": "TEXT",
+          "platforms_json": "TEXT",
+          "executive_summary": "TEXT",
+          "pillars_json": "TEXT",
+          "weekly_cadence_json": "TEXT",
+          "kpis_json": "TEXT",
+          "evidence_note": "TEXT",
+          "model_name": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "generated_content": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "user_id": "TEXT",
+          "campaign_id": "TEXT",
+          "social_account_id": "TEXT",
+          "platform_key": "TEXT",
+          "content_type": "TEXT",
+          "objective": "TEXT",
+          "target_audience": "TEXT",
+          "tone_of_voice": "TEXT",
+          "language": "TEXT",
+          "topic": "TEXT",
+          "title": "TEXT",
+          "body_text": "TEXT",
+          "caption_text": "TEXT",
+          "hashtags_json": "TEXT",
+          "keywords_json": "TEXT",
+          "call_to_action": "TEXT",
+          "image_prompt": "TEXT",
+          "video_script_json": "TEXT",
+          "repurposed_variants_json": "TEXT",
+          "safety_status": "TEXT",
+          "safety_notes_json": "TEXT",
+          "status": "TEXT",
+          "content_post_id": "TEXT",
+          "model_name": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "generated_images": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "user_id": "TEXT",
+          "generated_content_id": "TEXT",
+          "media_asset_id": "TEXT",
+          "graphic_type": "TEXT",
+          "platform_key": "TEXT",
+          "aspect_ratio": "TEXT",
+          "width_px": "INTEGER",
+          "height_px": "INTEGER",
+          "prompt": "TEXT",
+          "art_direction_json": "TEXT",
+          "caption_text": "TEXT",
+          "source_mode": "TEXT",
+          "image_url": "TEXT",
+          "status": "TEXT",
+          "error_message": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "content_calendar": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "content_post_id": "TEXT",
+          "generated_content_id": "TEXT",
+          "campaign_id": "TEXT",
+          "social_account_id": "TEXT",
+          "platform_key": "TEXT",
+          "title": "TEXT",
+          "body_text": "TEXT",
+          "hashtags_json": "TEXT",
+          "media_urls_json": "TEXT",
+          "format_key": "TEXT",
+          "scheduled_at": "TEXT",
+          "timezone": "TEXT",
+          "recurrence_type": "TEXT",
+          "recurrence_rule_json": "TEXT",
+          "status": "TEXT",
+          "created_by_user_id": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "publishing_queue": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "calendar_item_id": "TEXT",
+          "content_post_id": "TEXT",
+          "generated_content_id": "TEXT",
+          "campaign_id": "TEXT",
+          "social_account_id": "TEXT",
+          "platform_key": "TEXT",
+          "format_key": "TEXT",
+          "title": "TEXT",
+          "body_text": "TEXT",
+          "hashtags_json": "TEXT",
+          "media_urls_json": "TEXT",
+          "link_url": "TEXT",
+          "status": "TEXT",
+          "publishing_mode": "TEXT",
+          "requires_approval": "INTEGER",
+          "approved_by_user_id": "TEXT",
+          "approved_at": "TEXT",
+          "scheduled_at": "TEXT",
+          "next_run_at": "TEXT",
+          "timezone": "TEXT",
+          "recurrence_type": "TEXT",
+          "recurrence_rule_json": "TEXT",
+          "idempotency_key": "TEXT",
+          "content_hash": "TEXT",
+          "attempt_count": "INTEGER",
+          "max_attempts": "INTEGER",
+          "is_dead_letter": "INTEGER",
+          "last_error_permanent": "INTEGER",
+          "last_error": "TEXT",
+          "locked_by": "TEXT",
+          "locked_until": "TEXT",
+          "platform_post_id": "TEXT",
+          "platform_permalink": "TEXT",
+          "platform_response_json": "TEXT",
+          "published_at": "TEXT",
+          "created_by_user_id": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "publishing_attempts": {
+        "_schema": {
+          "id": "TEXT",
+          "queue_id": "TEXT",
+          "workspace_id": "TEXT",
+          "social_account_id": "TEXT",
+          "platform_key": "TEXT",
+          "attempt_number": "INTEGER",
+          "worker_id": "TEXT",
+          "status": "TEXT",
+          "http_status": "INTEGER",
+          "error_code": "TEXT",
+          "error_message": "TEXT",
+          "retry_delay_ms": "INTEGER",
+          "platform_post_id": "TEXT",
+          "api_response_json": "TEXT",
+          "started_at": "TEXT",
+          "finished_at": "TEXT"
+        }
+      },
+      "content_approvals": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "queue_id": "TEXT",
+          "requested_by_user_id": "TEXT",
+          "reviewer_user_id": "TEXT",
+          "decision": "TEXT",
+          "notes": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "engagement_messages": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "social_account_id": "TEXT",
+          "platform_key": "TEXT",
+          "external_message_id": "TEXT",
+          "external_post_id": "TEXT",
+          "message_type": "TEXT",
+          "author_name": "TEXT",
+          "author_handle": "TEXT",
+          "content": "TEXT",
+          "sentiment": "TEXT",
+          "requires_escalation": "INTEGER",
+          "escalation_reason": "TEXT",
+          "status": "TEXT",
+          "sent_reply_text": "TEXT",
+          "replied_by_mode": "TEXT",
+          "replied_at": "TEXT",
+          "is_demo": "INTEGER",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "ai_reply_suggestions": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "engagement_message_id": "TEXT",
+          "user_id": "TEXT",
+          "suggested_reply": "TEXT",
+          "tone": "TEXT",
+          "confidence_note": "TEXT",
+          "escalation_recommended": "INTEGER",
+          "escalation_reason": "TEXT",
+          "safety_passed": "INTEGER",
+          "status": "TEXT",
+          "model_name": "TEXT",
+          "created_at": "TEXT",
+          "updated_at": "TEXT"
+        }
+      },
+      "ai_generation_usage": {
+        "_schema": {
+          "id": "TEXT",
+          "workspace_id": "TEXT",
+          "user_id": "TEXT",
+          "module_key": "TEXT",
+          "model_name": "TEXT",
+          "credits_used": "INTEGER",
+          "prompt_tokens": "INTEGER",
+          "completion_tokens": "INTEGER",
+          "status": "TEXT",
+          "error_message": "TEXT",
+          "latency_ms": "INTEGER",
+          "created_at": "TEXT"
+        }
+      }
+    }
+  },
+  "livingtech_client": {
+    "users": {
+      "_schema": {
+        "id": "TEXT",
+        "email": "TEXT",
+        "fullName": "TEXT",
+        "role": "TEXT",
+        "status": "TEXT",
+        "timezone": "TEXT",
+        "preferredLanguage": "TEXT",
+        "lastSyncedAt": "TEXT"
+      }
+    },
+    "workspaces": {
+      "_schema": {
+        "id": "TEXT",
+        "name": "TEXT",
+        "slug": "TEXT",
+        "ownerUserId": "TEXT",
+        "aiCreditsBalance": "INTEGER",
+        "planCode": "TEXT",
+        "planName": "TEXT",
+        "brandName": "TEXT",
+        "primaryColor": "TEXT",
+        "updatedAt": "TEXT"
+      }
+    }
+  }
+}

@@ -4307,8 +4307,8 @@ function applyRtdbSnapshotToDb(db, tablesPayload) {
         }
         const entries = Array.isArray(rawTable) ? rawTable.map(
           (r, idx) => r && typeof r === "object" ? [getRowPrimaryKey(r, idx), r] : null
-        ).filter((e) => e !== null) : Object.entries(rawTable).filter(
-          (entry) => Boolean(entry[1] && typeof entry[1] === "object")
+        ).filter((e) => e !== null && !e[0].startsWith("_")) : Object.entries(rawTable).filter(
+          (entry) => !entry[0].startsWith("_") && Boolean(entry[1] && typeof entry[1] === "object")
         );
         const prevTableMap = syncState.lastSyncedSnapshot.get(table);
         const pkCol = getPrimaryKeyColumnName(table, validCols);
@@ -4328,6 +4328,7 @@ function applyRtdbSnapshotToDb(db, tablesPayload) {
           }
         }
         for (const [rtdbKey, row] of entries) {
+          if (rtdbKey.startsWith("_")) continue;
           const cols = Object.keys(row).filter((col) => validCols.has(col));
           if (cols.length === 0) continue;
           const placeholders = cols.map(() => "?").join(", ");
@@ -4517,6 +4518,256 @@ async function ensureRtdbHydrated(db, options) {
 
 // server/services/authService.ts
 import crypto4 from "node:crypto";
+
+// src/utils/planEntitlements.ts
+var PLAN_RANK = {
+  none: 0,
+  basic: 1,
+  pro: 2,
+  enterprise: 3
+};
+var PLAN_LIMITS = {
+  none: {
+    tier: "none",
+    name: "No Active Plan",
+    monthlyPriceCents: 0,
+    annualPriceCents: 0,
+    maxWorkspaces: 1,
+    maxSocialAccounts: 0,
+    maxTeamMembers: 1,
+    monthlyAiCredits: 0
+  },
+  basic: {
+    tier: "basic",
+    name: "Basic",
+    monthlyPriceCents: 2900,
+    annualPriceCents: 29e3,
+    maxWorkspaces: 1,
+    maxSocialAccounts: 5,
+    maxTeamMembers: 1,
+    monthlyAiCredits: 250
+  },
+  pro: {
+    tier: "pro",
+    name: "Pro",
+    monthlyPriceCents: 7900,
+    annualPriceCents: 79e3,
+    maxWorkspaces: 5,
+    maxSocialAccounts: 20,
+    maxTeamMembers: 10,
+    monthlyAiCredits: 2e3
+  },
+  enterprise: {
+    tier: "enterprise",
+    name: "Enterprise",
+    monthlyPriceCents: 29900,
+    annualPriceCents: 299e3,
+    maxWorkspaces: 50,
+    maxSocialAccounts: 250,
+    maxTeamMembers: 35,
+    monthlyAiCredits: 15e3
+  }
+};
+var FEATURE_CATALOG = {
+  social_accounts: {
+    key: "social_accounts",
+    label: "Social Accounts & OAuth",
+    description: "Connect and authorize official social media channels for profile sync and publishing.",
+    requiredTier: "basic",
+    route: "social-accounts"
+  },
+  ai_studio: {
+    key: "ai_studio",
+    label: "AI Content Studio",
+    description: "Generate brand-grounded social posts, multi-platform repurposed copy, captions, hashtags, and keywords.",
+    requiredTier: "basic",
+    route: "ai-studio"
+  },
+  calendar: {
+    key: "calendar",
+    label: "Content Calendar",
+    description: "Plan, organize, and schedule multi-channel campaigns across your editorial calendar.",
+    requiredTier: "basic",
+    route: "calendar"
+  },
+  media: {
+    key: "media",
+    label: "Media Library",
+    description: "Store, categorize, and attach approved brand images, flyers, and campaign assets.",
+    requiredTier: "basic",
+    route: "media"
+  },
+  graphic_designer: {
+    key: "graphic_designer",
+    label: "AI Graphic Designer",
+    description: "Design promotional flyers, banners, carousel slides, and AI-generated brand visuals.",
+    requiredTier: "pro",
+    route: "graphic-designer"
+  },
+  auto_publisher: {
+    key: "auto_publisher",
+    label: "Auto Publisher",
+    description: "Automated dispatch queues, recurring schedules, retries, and live publishing execution.",
+    requiredTier: "pro",
+    route: "auto-publisher"
+  },
+  publishing_history: {
+    key: "publishing_history",
+    label: "Publishing History & Approvals",
+    description: "Full delivery audit trail, post status history, and pre-publish approval workflows.",
+    requiredTier: "pro",
+    route: "publishing-history"
+  },
+  engagement: {
+    key: "engagement",
+    label: "Engagement Manager",
+    description: "Unified social inbox for comments and messages with AI-assisted reply drafting and escalation.",
+    requiredTier: "pro",
+    route: "engagement"
+  },
+  analytics: {
+    key: "analytics",
+    label: "Live Analytics & Attribution",
+    description: "Track impressions, reach, engagement rates, follower growth, and channel attribution.",
+    requiredTier: "pro",
+    route: "analytics"
+  },
+  team: {
+    key: "team",
+    label: "Team Management & RBAC",
+    description: "Invite editors, workspace admins, and reviewers with granular role-based permissions.",
+    requiredTier: "pro",
+    route: "team"
+  },
+  ai_strategy: {
+    key: "ai_strategy",
+    label: "AI Brand Strategy & Intelligence",
+    description: "Executive brand analysis, audience intelligence, multi-pillar strategies, and growth recommendations.",
+    requiredTier: "enterprise",
+    route: "ai-strategy"
+  }
+};
+var ORDERED_FEATURES = [
+  FEATURE_CATALOG.social_accounts,
+  FEATURE_CATALOG.ai_studio,
+  FEATURE_CATALOG.calendar,
+  FEATURE_CATALOG.media,
+  FEATURE_CATALOG.graphic_designer,
+  FEATURE_CATALOG.auto_publisher,
+  FEATURE_CATALOG.publishing_history,
+  FEATURE_CATALOG.engagement,
+  FEATURE_CATALOG.analytics,
+  FEATURE_CATALOG.team,
+  FEATURE_CATALOG.ai_strategy
+];
+var FREE_TRIAL_DAYS = 7;
+var FREE_TRIAL_MS = FREE_TRIAL_DAYS * 24 * 60 * 60 * 1e3;
+var FREE_TRIAL_AI_CREDITS = 100;
+function normalizePlanCode(code) {
+  const normalized = String(code || "").trim().toLowerCase();
+  if (normalized === "basic" || normalized === "starter") return "basic";
+  if (normalized === "pro" || normalized === "growth" || normalized === "agency") return "pro";
+  if (normalized === "enterprise") return "enterprise";
+  return "none";
+}
+function getTrialEndTimestamp(subscription) {
+  if (!subscription) return null;
+  const raw = subscription.trialEndsAt ?? subscription.currentPeriodEnd;
+  if (!raw) return null;
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+function isTrialExpired(subscription, nowMs = Date.now()) {
+  if (!subscription) return false;
+  if (subscription.isTrialExpired === true) return true;
+  const normalizedStatus = String(subscription.status || "").trim().toLowerCase();
+  if (normalizedStatus !== "trialing") return false;
+  const endTs = getTrialEndTimestamp(subscription);
+  if (endTs === null) return false;
+  return endTs <= nowMs;
+}
+function isTrialActive(subscription, nowMs = Date.now()) {
+  if (!subscription) return false;
+  const normalizedStatus = String(subscription.status || "").trim().toLowerCase();
+  if (normalizedStatus !== "trialing") return false;
+  return !isTrialExpired(subscription, nowMs);
+}
+function getTrialDaysRemaining(subscription, nowMs = Date.now()) {
+  if (!isTrialActive(subscription, nowMs)) return 0;
+  const endTs = getTrialEndTimestamp(subscription);
+  if (endTs === null) return FREE_TRIAL_DAYS;
+  const diff = endTs - nowMs;
+  if (diff <= 0) return 0;
+  return Math.max(1, Math.ceil(diff / (24 * 60 * 60 * 1e3)));
+}
+function isSubscriptionActive(statusOrSubscription, nowMs = Date.now()) {
+  if (!statusOrSubscription) return false;
+  if (typeof statusOrSubscription === "string") {
+    const normalized2 = statusOrSubscription.trim().toLowerCase();
+    return normalized2 === "active" || normalized2 === "trialing";
+  }
+  const normalized = String(statusOrSubscription.status || "").trim().toLowerCase();
+  if (normalized === "active") return true;
+  if (normalized === "trialing") {
+    return !isTrialExpired(statusOrSubscription, nowMs);
+  }
+  return false;
+}
+function getEffectivePlanTier(subscription, nowMs = Date.now()) {
+  if (!subscription || !isSubscriptionActive(subscription, nowMs)) {
+    return "none";
+  }
+  return normalizePlanCode(subscription.planCode);
+}
+function getPlanLimits(subscription, nowMs = Date.now()) {
+  return PLAN_LIMITS[getEffectivePlanTier(subscription, nowMs)];
+}
+function canAccessFeature(subscription, feature, nowMs = Date.now()) {
+  const currentTier = getEffectivePlanTier(subscription, nowMs);
+  const requiredTier = FEATURE_CATALOG[feature].requiredTier;
+  return PLAN_RANK[currentTier] >= PLAN_RANK[requiredTier];
+}
+function canAddSocialAccount(subscription, currentConnectedCount, nowMs = Date.now()) {
+  const limits = getPlanLimits(subscription, nowMs);
+  if (limits.maxSocialAccounts <= 0) {
+    return {
+      allowed: false,
+      limit: 0,
+      reason: isTrialExpired(subscription, nowMs) ? "Your 7-day free trial has ended. Subscribe to a plan under Billing & Subscriptions to connect social accounts." : "An active subscription plan is required to connect social media accounts."
+    };
+  }
+  if (currentConnectedCount >= limits.maxSocialAccounts) {
+    return {
+      allowed: false,
+      limit: limits.maxSocialAccounts,
+      reason: `Your ${limits.name} plan allows up to ${limits.maxSocialAccounts} connected social account${limits.maxSocialAccounts === 1 ? "" : "s"}. Upgrade your subscription to connect more channels.`
+    };
+  }
+  return { allowed: true, limit: limits.maxSocialAccounts };
+}
+function canAddTeamMember(subscription, currentMemberCount, nowMs = Date.now()) {
+  if (!canAccessFeature(subscription, "team", nowMs)) {
+    return {
+      allowed: false,
+      limit: getPlanLimits(subscription, nowMs).maxTeamMembers,
+      reason: isTrialExpired(subscription, nowMs) ? "Your 7-day free trial has ended. Subscribe to Pro or Enterprise to manage team seats." : "Team Management requires a Pro or Enterprise subscription."
+    };
+  }
+  const limits = getPlanLimits(subscription, nowMs);
+  if (currentMemberCount >= limits.maxTeamMembers) {
+    return {
+      allowed: false,
+      limit: limits.maxTeamMembers,
+      reason: `Your ${limits.name} plan supports up to ${limits.maxTeamMembers} team seats. Upgrade to Enterprise for more seats.`
+    };
+  }
+  return { allowed: true, limit: limits.maxTeamMembers };
+}
+function getTierDisplayName(tier) {
+  return PLAN_LIMITS[tier].name;
+}
+
+// server/services/authService.ts
 var SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1e3;
 var SESSION_RENEW_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1e3;
 function hashSessionToken(token) {
@@ -4585,22 +4836,42 @@ function getWorkspaceSubscriptionSummary(db, workspaceId) {
       status: "none",
       billingCycle: "monthly",
       currentPeriodEnd: null,
+      trialEndsAt: null,
+      trialDaysRemaining: 0,
+      isTrialActive: false,
+      isTrialExpired: false,
       maxWorkspaces: 1,
       maxSocialAccounts: 0,
       maxTeamMembers: 1,
       monthlyAiCredits: 0
     };
   }
-  return {
+  const rawStatus = String(row.status);
+  const currentPeriodEnd = row.current_period_end ? String(row.current_period_end) : null;
+  const trialEndsAt = rawStatus === "trialing" ? currentPeriodEnd : null;
+  const baseSub = {
     planCode: String(row.plan_code),
-    planName: String(row.plan_name),
-    status: String(row.status),
+    status: rawStatus,
+    currentPeriodEnd,
+    trialEndsAt
+  };
+  const activeTrial = isTrialActive(baseSub);
+  const expiredTrial = isTrialExpired(baseSub);
+  const daysRemaining = getTrialDaysRemaining(baseSub);
+  return {
+    planCode: baseSub.planCode,
+    planName: activeTrial ? "7-Day Free Trial" : expiredTrial ? "Trial Expired" : String(row.plan_name),
+    status: rawStatus,
     billingCycle: String(row.billing_cycle) === "annual" ? "annual" : "monthly",
-    currentPeriodEnd: row.current_period_end ? String(row.current_period_end) : null,
-    maxWorkspaces: Number(row.max_workspaces || 1),
-    maxSocialAccounts: Number(row.max_social_accounts || 0),
-    maxTeamMembers: Number(row.max_team_members || 1),
-    monthlyAiCredits: Number(row.monthly_ai_credits || 0)
+    currentPeriodEnd,
+    trialEndsAt,
+    trialDaysRemaining: daysRemaining,
+    isTrialActive: activeTrial,
+    isTrialExpired: expiredTrial,
+    maxWorkspaces: expiredTrial ? 1 : Number(row.max_workspaces || 1),
+    maxSocialAccounts: expiredTrial ? 0 : Number(row.max_social_accounts || 0),
+    maxTeamMembers: expiredTrial ? 1 : Number(row.max_team_members || 1),
+    monthlyAiCredits: expiredTrial ? 0 : activeTrial ? FREE_TRIAL_AI_CREDITS : Number(row.monthly_ai_credits || 0)
   };
 }
 function listUserWorkspaces(db, userId) {
@@ -4752,13 +5023,15 @@ function registerUserWithWorkspace(db, input) {
   const wsName = (input.workspaceName || `${input.fullName.split(" ")[0]}'s Brand Workspace`).trim();
   const slugBase = slugifyWorkspaceName(wsName);
   const uniqueSlug = `${slugBase}-${crypto4.randomBytes(3).toString("hex")}`;
-  const initialCredits = 0;
+  const initialCredits = FREE_TRIAL_AI_CREDITS;
+  const trialEndsAt = new Date(Date.now() + FREE_TRIAL_MS).toISOString();
+  const trialPlan = db.prepare("SELECT id FROM subscription_plans WHERE code = 'enterprise'").get() || db.prepare("SELECT id FROM subscription_plans WHERE code = 'pro'").get() || db.prepare("SELECT id FROM subscription_plans WHERE code = 'basic'").get();
   const verifyToken = crypto4.randomBytes(20).toString("hex");
   const tx = db.transaction(() => {
     db.prepare(`
-      INSERT INTO users (id, auth_provider, email, password_hash, full_name, role_slug, email_verified, status, timezone, preferred_language, created_at, updated_at)
-      VALUES (?, 'password', ?, ?, ?, 'customer', 0, 'active', 'UTC', 'en', ?, ?)
-    `).run(userId, email, hashPassword(input.password), input.fullName.trim(), now, now);
+      INSERT INTO users (id, auth_provider, external_uid, email, password_hash, full_name, role_slug, email_verified, status, timezone, preferred_language, created_at, updated_at)
+      VALUES (?, 'password', ?, ?, ?, ?, 'customer', 0, 'active', 'UTC', 'en', ?, ?)
+    `).run(userId, input.externalUid ?? null, email, hashPassword(input.password), input.fullName.trim(), now, now);
     db.prepare(`
       INSERT INTO organisations (id, owner_user_id, name, slug, billing_email, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -4777,9 +5050,15 @@ function registerUserWithWorkspace(db, input) {
       INSERT INTO workspace_members (id, workspace_id, user_id, invited_email, role_slug, status, invited_by, created_at, updated_at)
       VALUES (?, ?, ?, ?, 'workspace_admin', 'active', ?, ?, ?)
     `).run(crypto4.randomUUID(), wsId, userId, email, userId, now, now);
+    if (trialPlan) {
+      db.prepare(`
+        INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'trialing', 'monthly', ?, ?, ?, ?)
+      `).run(crypto4.randomUUID(), orgId, wsId, trialPlan.id, now, trialEndsAt, now, now);
+    }
     db.prepare(`
       INSERT INTO notifications (id, workspace_id, user_id, category, title, body, is_read, created_at, updated_at)
-      VALUES (?, ?, ?, 'billing', 'Select Your Subscription Plan', 'Your workspace is ready. Visit Billing & Subscriptions to choose Basic, Pro, or Enterprise and unlock your package modules.', 0, ?, ?)
+      VALUES (?, ?, ?, 'billing', '7-Day Free Trial Activated', 'Welcome! Enjoy full access free for 7 days with 100 trial AI credits. After 7 days, choose Basic, Pro, or Enterprise under Billing & Subscriptions to continue.', 0, ?, ?)
     `).run(crypto4.randomUUID(), wsId, userId, now, now);
     const verifyExpires = new Date(Date.now() + 24 * 3600 * 1e3).toISOString();
     db.prepare(`
@@ -4836,6 +5115,98 @@ function loginWithPassword(db, emailInput, password) {
     token
   };
 }
+function provisionOrSyncVerifiedEmailUser(db, input) {
+  const email = input.email.trim().toLowerCase();
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  let row = db.prepare("SELECT * FROM users WHERE external_uid = ? OR email = ?").get(input.externalUid, email);
+  if (!row) {
+    const userId = crypto4.randomUUID();
+    const orgId = crypto4.randomUUID();
+    const wsId = crypto4.randomUUID();
+    const role = email === "livingstoneedu64@gmail.com" ? "super_admin" : "customer";
+    const displayName = input.fullName.trim() || email.split("@")[0];
+    const wsName = `${displayName.split(" ")[0]}'s Brand Workspace`;
+    const uniqueSlug = `${slugifyWorkspaceName(wsName)}-${crypto4.randomBytes(3).toString("hex")}`;
+    const trialPlan = db.prepare("SELECT id FROM subscription_plans WHERE code = 'enterprise'").get() || db.prepare("SELECT id FROM subscription_plans WHERE code = 'pro'").get() || db.prepare("SELECT id FROM subscription_plans WHERE code = 'basic'").get();
+    const periodEnd = role === "super_admin" ? new Date(Date.now() + 365 * 86400 * 1e3).toISOString() : new Date(Date.now() + FREE_TRIAL_MS).toISOString();
+    db.transaction(() => {
+      db.prepare(`
+        INSERT INTO users (id, auth_provider, external_uid, email, password_hash, full_name, role_slug, email_verified, status, timezone, preferred_language, created_at, updated_at)
+        VALUES (?, 'password', ?, ?, ?, ?, ?, 0, 'active', 'UTC', 'en', ?, ?)
+      `).run(userId, input.externalUid, email, hashPassword(input.password), displayName, role, now, now);
+      db.prepare(`
+        INSERT INTO organisations (id, owner_user_id, name, slug, billing_email, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(orgId, userId, wsName, uniqueSlug, email, now, now);
+      db.prepare(`
+        INSERT INTO workspaces (id, organisation_id, owner_user_id, name, slug, timezone, preferred_language, ai_credits_balance, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'UTC', 'en', ?, ?, ?)
+      `).run(wsId, orgId, userId, wsName, uniqueSlug, role === "super_admin" ? 15e3 : FREE_TRIAL_AI_CREDITS, now, now);
+      db.prepare(`
+        INSERT INTO brand_profiles (
+          id, workspace_id, brand_name, logo_url, primary_color, secondary_color, accent_color,
+          business_description, industry, target_audience, tone_of_voice, preferred_language, timezone, created_at, updated_at
+        ) VALUES (?, ?, ?, '', '#0052FF', '#071436', '#F59E0B', '', '', '', 'Professional & Modern', 'en', 'UTC', ?, ?)
+      `).run(crypto4.randomUUID(), wsId, wsName, now, now);
+      db.prepare(`
+        INSERT INTO workspace_members (id, workspace_id, user_id, invited_email, role_slug, status, invited_by, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'workspace_admin', 'active', ?, ?, ?)
+      `).run(crypto4.randomUUID(), wsId, userId, email, userId, now, now);
+      if (trialPlan) {
+        db.prepare(`
+          INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          crypto4.randomUUID(),
+          orgId,
+          wsId,
+          trialPlan.id,
+          role === "super_admin" ? "active" : "trialing",
+          role === "super_admin" ? "annual" : "monthly",
+          now,
+          periodEnd,
+          now,
+          now
+        );
+      }
+      db.prepare(`
+        INSERT INTO notifications (id, workspace_id, user_id, category, title, body, is_read, created_at, updated_at)
+        VALUES (?, ?, ?, 'billing', '7-Day Free Trial Activated', 'Welcome! Enjoy full access free for 7 days with 100 trial AI credits. After 7 days, choose Basic, Pro, or Enterprise under Billing & Subscriptions to continue.', 0, ?, ?)
+      `).run(crypto4.randomUUID(), wsId, userId, now, now);
+    })();
+    row = db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
+  } else {
+    if (row.status === "suspended") {
+      throw new Error("This account has been suspended. Contact support for assistance.");
+    }
+    if (row.status === "deleted") {
+      throw new Error("This account is scheduled for deletion. Use Account Recovery to restore access.");
+    }
+    db.prepare(`
+      UPDATE users
+      SET external_uid = COALESCE(external_uid, ?),
+          password_hash = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(input.externalUid, hashPassword(input.password), now, row.id);
+    row = db.prepare("SELECT * FROM users WHERE id = ?").get(row.id);
+  }
+  const user = mapUserRow(row);
+  const token = createSession(db, user.id);
+  recordAuditLog(db, {
+    actorUserId: user.id,
+    actorEmail: user.email,
+    action: "auth.login",
+    resourceType: "session",
+    resourceId: user.id,
+    metadata: { verifiedVia: "firebase_auth" }
+  });
+  return {
+    user,
+    workspaces: listUserWorkspaces(db, user.id),
+    token
+  };
+}
 function syncFirebaseGoogleUser(db, input) {
   const email = input.email.trim().toLowerCase();
   const now = (/* @__PURE__ */ new Date()).toISOString();
@@ -4847,8 +5218,8 @@ function syncFirebaseGoogleUser(db, input) {
     const role = email === "livingstoneedu64@gmail.com" ? "super_admin" : "customer";
     const wsName = `${input.fullName.split(" ")[0]}'s Agency Workspace`;
     const uniqueSlug = `${slugifyWorkspaceName(wsName)}-${crypto4.randomBytes(3).toString("hex")}`;
-    const enterprisePlan = role === "super_admin" ? db.prepare("SELECT id FROM subscription_plans WHERE code = 'enterprise'").get() : void 0;
-    const periodEnd = new Date(Date.now() + 365 * 86400 * 1e3).toISOString();
+    const enterprisePlan = db.prepare("SELECT id FROM subscription_plans WHERE code = 'enterprise'").get();
+    const periodEnd = role === "super_admin" ? new Date(Date.now() + 365 * 86400 * 1e3).toISOString() : new Date(Date.now() + FREE_TRIAL_MS).toISOString();
     db.transaction(() => {
       db.prepare(`
         INSERT INTO users (id, auth_provider, external_uid, email, full_name, avatar_url, role_slug, email_verified, status, timezone, preferred_language, created_at, updated_at)
@@ -4861,7 +5232,7 @@ function syncFirebaseGoogleUser(db, input) {
       db.prepare(`
         INSERT INTO workspaces (id, organisation_id, owner_user_id, name, slug, timezone, preferred_language, ai_credits_balance, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, 'UTC', 'en', ?, ?, ?)
-      `).run(wsId, orgId, userId, wsName, uniqueSlug, role === "super_admin" ? 15e3 : 0, now, now);
+      `).run(wsId, orgId, userId, wsName, uniqueSlug, role === "super_admin" ? 15e3 : FREE_TRIAL_AI_CREDITS, now, now);
       db.prepare(`
         INSERT INTO brand_profiles (
           id, workspace_id, brand_name, logo_url, primary_color, secondary_color, accent_color,
@@ -4875,8 +5246,19 @@ function syncFirebaseGoogleUser(db, input) {
       if (enterprisePlan) {
         db.prepare(`
           INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
-          VALUES (?, ?, ?, ?, 'active', 'annual', ?, ?, ?, ?)
-        `).run(crypto4.randomUUID(), orgId, wsId, enterprisePlan.id, now, periodEnd, now, now);
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          crypto4.randomUUID(),
+          orgId,
+          wsId,
+          enterprisePlan.id,
+          role === "super_admin" ? "active" : "trialing",
+          role === "super_admin" ? "annual" : "monthly",
+          now,
+          periodEnd,
+          now,
+          now
+        );
       }
     })();
     row = db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
@@ -4987,210 +5369,134 @@ function assertWorkspaceAccess(db, userId, workspaceId, role) {
   return Boolean(member);
 }
 
-// src/utils/planEntitlements.ts
-var PLAN_RANK = {
-  none: 0,
-  basic: 1,
-  pro: 2,
-  enterprise: 3
+// src/config/firebaseConfig.ts
+var viteEnv = typeof import.meta !== "undefined" && import.meta.env || {};
+var DEFAULT_FIREBASE_DATABASE_URL = "https://livingtech-brand-agency-default-rtdb.firebaseio.com";
+var LIVINGTECH_FIREBASE_CONFIG = {
+  apiKey: viteEnv.VITE_FIREBASE_API_KEY || "AIzaSyDXLNVbNX-sU5jakxMtB5EJcM5TWkWS3Vo",
+  authDomain: viteEnv.VITE_FIREBASE_AUTH_DOMAIN || "livingtech-brand-agency.firebaseapp.com",
+  databaseURL: viteEnv.VITE_FIREBASE_DATABASE_URL || DEFAULT_FIREBASE_DATABASE_URL,
+  projectId: viteEnv.VITE_FIREBASE_PROJECT_ID || "livingtech-brand-agency",
+  storageBucket: viteEnv.VITE_FIREBASE_STORAGE_BUCKET || "livingtech-brand-agency.firebasestorage.app",
+  messagingSenderId: viteEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || "795478435500",
+  appId: viteEnv.VITE_FIREBASE_APP_ID || "1:795478435500:web:7330ba743889d7fad62109",
+  measurementId: viteEnv.VITE_FIREBASE_MEASUREMENT_ID || "G-MM3KYW2G3V"
 };
-var PLAN_LIMITS = {
-  none: {
-    tier: "none",
-    name: "No Active Plan",
-    monthlyPriceCents: 0,
-    annualPriceCents: 0,
-    maxWorkspaces: 1,
-    maxSocialAccounts: 0,
-    maxTeamMembers: 1,
-    monthlyAiCredits: 0
-  },
-  basic: {
-    tier: "basic",
-    name: "Basic",
-    monthlyPriceCents: 2900,
-    annualPriceCents: 29e3,
-    maxWorkspaces: 1,
-    maxSocialAccounts: 5,
-    maxTeamMembers: 1,
-    monthlyAiCredits: 250
-  },
-  pro: {
-    tier: "pro",
-    name: "Pro",
-    monthlyPriceCents: 7900,
-    annualPriceCents: 79e3,
-    maxWorkspaces: 5,
-    maxSocialAccounts: 20,
-    maxTeamMembers: 10,
-    monthlyAiCredits: 2e3
-  },
-  enterprise: {
-    tier: "enterprise",
-    name: "Enterprise",
-    monthlyPriceCents: 29900,
-    annualPriceCents: 299e3,
-    maxWorkspaces: 50,
-    maxSocialAccounts: 250,
-    maxTeamMembers: 35,
-    monthlyAiCredits: 15e3
+
+// server/services/firebaseAuthService.ts
+var customAuthFetch = null;
+var AUTH_TIMEOUT_MS = 5e3;
+function isFirebaseEmailAuthEnabled() {
+  if (customAuthFetch) return true;
+  if (process.env.DISABLE_FIREBASE_AUTH_SYNC === "true") return false;
+  if (process.env.NODE_ENV === "test") return false;
+  return Boolean(getFirebaseWebApiKey());
+}
+function getFirebaseWebApiKey() {
+  return process.env.FIREBASE_WEB_API_KEY?.trim() || process.env.VITE_FIREBASE_API_KEY?.trim() || LIVINGTECH_FIREBASE_CONFIG.apiKey || "";
+}
+async function doAuthFetch(url, init) {
+  const transport = customAuthFetch ?? fetch;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), AUTH_TIMEOUT_MS);
+  try {
+    return await transport(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+var FirebaseEmailExistsError = class extends Error {
+  constructor() {
+    super("An account with this email already exists. Please sign in instead.");
+    this.name = "FirebaseEmailExistsError";
   }
 };
-var FEATURE_CATALOG = {
-  social_accounts: {
-    key: "social_accounts",
-    label: "Social Accounts & OAuth",
-    description: "Connect and authorize official social media channels for profile sync and publishing.",
-    requiredTier: "basic",
-    route: "social-accounts"
-  },
-  ai_studio: {
-    key: "ai_studio",
-    label: "AI Content Studio",
-    description: "Generate brand-grounded social posts, multi-platform repurposed copy, captions, hashtags, and keywords.",
-    requiredTier: "basic",
-    route: "ai-studio"
-  },
-  calendar: {
-    key: "calendar",
-    label: "Content Calendar",
-    description: "Plan, organize, and schedule multi-channel campaigns across your editorial calendar.",
-    requiredTier: "basic",
-    route: "calendar"
-  },
-  media: {
-    key: "media",
-    label: "Media Library",
-    description: "Store, categorize, and attach approved brand images, flyers, and campaign assets.",
-    requiredTier: "basic",
-    route: "media"
-  },
-  graphic_designer: {
-    key: "graphic_designer",
-    label: "AI Graphic Designer",
-    description: "Design promotional flyers, banners, carousel slides, and AI-generated brand visuals.",
-    requiredTier: "pro",
-    route: "graphic-designer"
-  },
-  auto_publisher: {
-    key: "auto_publisher",
-    label: "Auto Publisher",
-    description: "Automated dispatch queues, recurring schedules, retries, and live publishing execution.",
-    requiredTier: "pro",
-    route: "auto-publisher"
-  },
-  publishing_history: {
-    key: "publishing_history",
-    label: "Publishing History & Approvals",
-    description: "Full delivery audit trail, post status history, and pre-publish approval workflows.",
-    requiredTier: "pro",
-    route: "publishing-history"
-  },
-  engagement: {
-    key: "engagement",
-    label: "Engagement Manager",
-    description: "Unified social inbox for comments and messages with AI-assisted reply drafting and escalation.",
-    requiredTier: "pro",
-    route: "engagement"
-  },
-  analytics: {
-    key: "analytics",
-    label: "Live Analytics & Attribution",
-    description: "Track impressions, reach, engagement rates, follower growth, and channel attribution.",
-    requiredTier: "pro",
-    route: "analytics"
-  },
-  team: {
-    key: "team",
-    label: "Team Management & RBAC",
-    description: "Invite editors, workspace admins, and reviewers with granular role-based permissions.",
-    requiredTier: "pro",
-    route: "team"
-  },
-  ai_strategy: {
-    key: "ai_strategy",
-    label: "AI Brand Strategy & Intelligence",
-    description: "Executive brand analysis, audience intelligence, multi-pillar strategies, and growth recommendations.",
-    requiredTier: "enterprise",
-    route: "ai-strategy"
-  }
-};
-var ORDERED_FEATURES = [
-  FEATURE_CATALOG.social_accounts,
-  FEATURE_CATALOG.ai_studio,
-  FEATURE_CATALOG.calendar,
-  FEATURE_CATALOG.media,
-  FEATURE_CATALOG.graphic_designer,
-  FEATURE_CATALOG.auto_publisher,
-  FEATURE_CATALOG.publishing_history,
-  FEATURE_CATALOG.engagement,
-  FEATURE_CATALOG.analytics,
-  FEATURE_CATALOG.team,
-  FEATURE_CATALOG.ai_strategy
-];
-function normalizePlanCode(code) {
-  const normalized = String(code || "").trim().toLowerCase();
-  if (normalized === "basic" || normalized === "starter") return "basic";
-  if (normalized === "pro" || normalized === "growth" || normalized === "agency") return "pro";
-  if (normalized === "enterprise") return "enterprise";
-  return "none";
-}
-function isSubscriptionActive(status) {
-  const normalized = String(status || "").trim().toLowerCase();
-  return normalized === "active" || normalized === "trialing";
-}
-function getEffectivePlanTier(subscription) {
-  if (!subscription || !isSubscriptionActive(subscription.status)) {
-    return "none";
-  }
-  return normalizePlanCode(subscription.planCode);
-}
-function getPlanLimits(subscription) {
-  return PLAN_LIMITS[getEffectivePlanTier(subscription)];
-}
-function canAccessFeature(subscription, feature) {
-  const currentTier = getEffectivePlanTier(subscription);
-  const requiredTier = FEATURE_CATALOG[feature].requiredTier;
-  return PLAN_RANK[currentTier] >= PLAN_RANK[requiredTier];
-}
-function canAddSocialAccount(subscription, currentConnectedCount) {
-  const limits = getPlanLimits(subscription);
-  if (limits.maxSocialAccounts <= 0) {
+async function firebaseSignUpWithEmailPassword(emailInput, password, fullName) {
+  if (!isFirebaseEmailAuthEnabled()) return null;
+  const apiKey = getFirebaseWebApiKey();
+  const email = emailInput.trim().toLowerCase();
+  try {
+    const signUpUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${encodeURIComponent(apiKey)}`;
+    const resp = await doAuthFetch(signUpUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        password,
+        returnSecureToken: true
+      })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      const code = String(data?.error?.message || "");
+      if (code.startsWith("EMAIL_EXISTS")) {
+        throw new FirebaseEmailExistsError();
+      }
+      logger.warn("Firebase Auth signUp skipped", { status: resp.status, code });
+      return null;
+    }
+    if (!data.localId || !data.idToken) return null;
+    const trimmedName = fullName.trim();
+    if (trimmedName) {
+      const updateUrl = `https://identitytoolkit.googleapis.com/v1/accounts:update?key=${encodeURIComponent(apiKey)}`;
+      await doAuthFetch(updateUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          idToken: data.idToken,
+          displayName: trimmedName,
+          returnSecureToken: false
+        })
+      }).catch(() => void 0);
+    }
     return {
-      allowed: false,
-      limit: 0,
-      reason: "An active subscription plan is required to connect social media accounts."
+      localId: data.localId,
+      idToken: data.idToken,
+      email: (data.email || email).toLowerCase(),
+      displayName: trimmedName || email.split("@")[0]
     };
+  } catch (err) {
+    if (err instanceof FirebaseEmailExistsError) {
+      throw err;
+    }
+    logger.warn("Firebase Auth signUp network fallback", {
+      error: err instanceof Error ? err.message : String(err)
+    });
+    return null;
   }
-  if (currentConnectedCount >= limits.maxSocialAccounts) {
-    return {
-      allowed: false,
-      limit: limits.maxSocialAccounts,
-      reason: `Your ${limits.name} plan allows up to ${limits.maxSocialAccounts} connected social account${limits.maxSocialAccounts === 1 ? "" : "s"}. Upgrade your subscription to connect more channels.`
-    };
-  }
-  return { allowed: true, limit: limits.maxSocialAccounts };
 }
-function canAddTeamMember(subscription, currentMemberCount) {
-  if (!canAccessFeature(subscription, "team")) {
+async function firebaseSignInWithEmailPassword(emailInput, password) {
+  if (!isFirebaseEmailAuthEnabled()) return null;
+  const apiKey = getFirebaseWebApiKey();
+  const email = emailInput.trim().toLowerCase();
+  try {
+    const signInUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(apiKey)}`;
+    const resp = await doAuthFetch(signInUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        password,
+        returnSecureToken: true
+      })
+    });
+    if (!resp.ok) {
+      return null;
+    }
+    const data = await resp.json().catch(() => ({}));
+    if (!data.localId || !data.idToken) return null;
     return {
-      allowed: false,
-      limit: getPlanLimits(subscription).maxTeamMembers,
-      reason: "Team Management requires a Pro or Enterprise subscription."
+      localId: data.localId,
+      idToken: data.idToken,
+      email: (data.email || email).toLowerCase(),
+      displayName: (data.displayName || "").trim() || email.split("@")[0]
     };
+  } catch (err) {
+    logger.warn("Firebase Auth signIn lookup error", {
+      error: err instanceof Error ? err.message : String(err)
+    });
+    return null;
   }
-  const limits = getPlanLimits(subscription);
-  if (currentMemberCount >= limits.maxTeamMembers) {
-    return {
-      allowed: false,
-      limit: limits.maxTeamMembers,
-      reason: `Your ${limits.name} plan supports up to ${limits.maxTeamMembers} team seats. Upgrade to Enterprise for more seats.`
-    };
-  }
-  return { allowed: true, limit: limits.maxTeamMembers };
-}
-function getTierDisplayName(tier) {
-  return PLAN_LIMITS[tier].name;
 }
 
 // server/services/entitlementMiddleware.ts
@@ -5206,9 +5512,10 @@ function createWorkspaceFeatureGuard(db, feature) {
       const requiredName = getTierDisplayName(meta.requiredTier);
       const currentTier = getEffectivePlanTier(subscription);
       const currentName = getTierDisplayName(currentTier);
+      const expired = isTrialExpired(subscription);
       return res.status(403).json({
-        error: `${meta.label} is not available on your current plan (${currentName}). Subscribe to the ${requiredName} plan under Billing & Subscriptions to unlock this feature.`,
-        code: "SUBSCRIPTION_REQUIRED",
+        error: expired ? `Your 7-day free trial has ended. Subscribe and complete payment for the ${requiredName} plan under Billing & Subscriptions to continue using ${meta.label}.` : `${meta.label} is not available on your current plan (${currentName}). Subscribe to the ${requiredName} plan under Billing & Subscriptions to unlock this feature.`,
+        code: expired ? "TRIAL_EXPIRED" : "SUBSCRIPTION_REQUIRED",
         feature,
         currentPlan: currentTier,
         requiredPlan: meta.requiredTier
@@ -7352,13 +7659,40 @@ function createApiRouter(db) {
     workspaceName: z2.string().min(2).max(120).optional(),
     industry: z2.string().max(100).optional()
   });
-  router.post("/auth/register", (req, res) => {
+  const getHeaderFirebaseIdToken = (req) => {
+    const raw = req.headers["x-firebase-id-token"];
+    return typeof raw === "string" && raw.trim() ? raw.trim() : void 0;
+  };
+  router.post("/auth/register", async (req, res) => {
     try {
       const payload = RegisterSchema.parse(req.body);
-      const result = registerUserWithWorkspace(db, payload);
+      const headerIdToken = getHeaderFirebaseIdToken(req);
+      if (isRtdbSyncEnabled()) {
+        await hydrateDatabaseFromRtdb(db, { authToken: headerIdToken, force: true }).catch(() => false);
+      }
+      const normalizedEmail = payload.email.trim().toLowerCase();
+      const strength = validatePasswordStrength(payload.password);
+      if (!strength.valid) {
+        return res.status(400).json({ error: strength.reason || "Weak password" });
+      }
+      if (db.prepare("SELECT id FROM users WHERE email = ?").get(normalizedEmail)) {
+        return res.status(400).json({ error: "An account with this email already exists." });
+      }
+      const fbAuth = await firebaseSignUpWithEmailPassword(normalizedEmail, payload.password, payload.fullName);
+      const result = registerUserWithWorkspace(db, {
+        ...payload,
+        externalUid: fbAuth?.localId ?? null
+      });
+      if (isRtdbSyncEnabled()) {
+        await persistDatabaseToRtdb(db, { authToken: fbAuth?.idToken || headerIdToken }).catch(() => false);
+        res.locals.rtdbPersisted = true;
+      }
       setSessionCookie(req, res, result.token);
       res.status(201).json(result);
     } catch (err) {
+      if (err instanceof FirebaseEmailExistsError) {
+        return res.status(400).json({ error: err.message });
+      }
       handleRouteError(res, err, 400);
     }
   });
@@ -7366,10 +7700,51 @@ function createApiRouter(db) {
     email: z2.string().email("Enter a valid email address."),
     password: z2.string().min(1, "Password is required.")
   });
-  router.post("/auth/login", (req, res) => {
+  router.post("/auth/login", async (req, res) => {
     try {
       const payload = LoginSchema.parse(req.body);
-      const result = loginWithPassword(db, payload.email, payload.password);
+      const headerIdToken = getHeaderFirebaseIdToken(req);
+      let activeIdToken = headerIdToken;
+      let result = null;
+      try {
+        result = loginWithPassword(db, payload.email, payload.password);
+      } catch (firstErr) {
+        const msg = firstErr instanceof Error ? firstErr.message : "";
+        if (msg !== "Invalid email or password.") {
+          throw firstErr;
+        }
+        if (isRtdbSyncEnabled()) {
+          await hydrateDatabaseFromRtdb(db, { authToken: headerIdToken, force: true }).catch(() => false);
+          try {
+            result = loginWithPassword(db, payload.email, payload.password);
+          } catch (retryErr) {
+            const retryMsg = retryErr instanceof Error ? retryErr.message : "";
+            if (retryMsg !== "Invalid email or password.") {
+              throw retryErr;
+            }
+          }
+        }
+        if (!result) {
+          const fbUser = await firebaseSignInWithEmailPassword(payload.email, payload.password);
+          if (!fbUser) {
+            throw firstErr;
+          }
+          activeIdToken = fbUser.idToken;
+          if (isRtdbSyncEnabled()) {
+            await hydrateDatabaseFromRtdb(db, { authToken: fbUser.idToken, force: true }).catch(() => false);
+          }
+          result = provisionOrSyncVerifiedEmailUser(db, {
+            externalUid: fbUser.localId,
+            email: fbUser.email,
+            password: payload.password,
+            fullName: fbUser.displayName
+          });
+        }
+      }
+      if (isRtdbSyncEnabled()) {
+        await persistDatabaseToRtdb(db, { authToken: activeIdToken }).catch(() => false);
+        res.locals.rtdbPersisted = true;
+      }
       setSessionCookie(req, res, result.token);
       res.json(result);
     } catch (err) {
@@ -7383,19 +7758,31 @@ function createApiRouter(db) {
     avatarUrl: z2.string().nullable().optional(),
     emailVerified: z2.boolean().default(true)
   });
-  router.post("/auth/google-sync", (req, res) => {
+  router.post("/auth/google-sync", async (req, res) => {
     try {
       const payload = GoogleSyncSchema.parse(req.body);
+      const headerIdToken = getHeaderFirebaseIdToken(req);
+      if (isRtdbSyncEnabled()) {
+        await hydrateDatabaseFromRtdb(db, { authToken: headerIdToken, force: true }).catch(() => false);
+      }
       const result = syncFirebaseGoogleUser(db, payload);
+      if (isRtdbSyncEnabled()) {
+        await persistDatabaseToRtdb(db, { authToken: headerIdToken }).catch(() => false);
+        res.locals.rtdbPersisted = true;
+      }
       setSessionCookie(req, res, result.token);
       res.json(result);
     } catch (err) {
       handleRouteError(res, err, 400);
     }
   });
-  router.post("/auth/logout", (req, res) => {
+  router.post("/auth/logout", async (req, res) => {
     const token = extractToken(req);
     if (token) revokeSession(db, token);
+    if (isRtdbSyncEnabled()) {
+      await persistDatabaseToRtdb(db, { authToken: getHeaderFirebaseIdToken(req) }).catch(() => false);
+      res.locals.rtdbPersisted = true;
+    }
     clearSessionCookie(req, res);
     res.json({ success: true });
   });
@@ -7583,13 +7970,13 @@ function createApiRouter(db) {
       }
       const wsId = crypto8.randomUUID();
       const slug = `${slugifyWorkspaceName(payload.name)}-${crypto8.randomBytes(3).toString("hex")}`;
-      const starterPlan = db.prepare("SELECT id FROM subscription_plans WHERE code = 'basic'").get();
-      const periodEnd = new Date(Date.now() + 30 * 86400 * 1e3).toISOString();
+      const trialPlan = db.prepare("SELECT id FROM subscription_plans WHERE code = 'enterprise'").get() || db.prepare("SELECT id FROM subscription_plans WHERE code = 'basic'").get();
+      const periodEnd = new Date(Date.now() + FREE_TRIAL_MS).toISOString();
       db.transaction(() => {
         db.prepare(`
           INSERT INTO workspaces (id, organisation_id, owner_user_id, name, slug, timezone, preferred_language, ai_credits_balance, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 250, ?, ?)
-        `).run(wsId, org.id, req.user.id, payload.name.trim(), slug, payload.timezone, payload.preferredLanguage, now, now);
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(wsId, org.id, req.user.id, payload.name.trim(), slug, payload.timezone, payload.preferredLanguage, FREE_TRIAL_AI_CREDITS, now, now);
         db.prepare(`
           INSERT INTO brand_profiles (
             id, workspace_id, brand_name, logo_url, primary_color, secondary_color, accent_color,
@@ -7618,7 +8005,7 @@ function createApiRouter(db) {
         db.prepare(`
           INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
           VALUES (?, ?, ?, ?, 'trialing', 'monthly', ?, ?, ?, ?)
-        `).run(crypto8.randomUUID(), org.id, wsId, starterPlan.id, now, periodEnd, now, now);
+        `).run(crypto8.randomUUID(), org.id, wsId, trialPlan.id, now, periodEnd, now, now);
         recordAuditLog(db, {
           actorUserId: req.user.id,
           actorEmail: req.user.email,
@@ -8460,32 +8847,60 @@ ${cta}` : String(existing.post_copy).trim();
         billingCycle: "monthly",
         currentPeriodStart: "",
         currentPeriodEnd: "",
+        trialEndsAt: null,
+        trialDaysRemaining: 0,
+        isTrialActive: false,
+        isTrialExpired: false,
         hasSubscription: false
       });
     }
+    const rawStatus = String(row.status);
+    const currentPeriodEnd = String(row.current_period_end || "");
+    const trialEndsAt = rawStatus === "trialing" ? currentPeriodEnd : null;
+    const subCheck = {
+      planCode: String(row.plan_code),
+      status: rawStatus,
+      currentPeriodEnd,
+      trialEndsAt
+    };
+    const activeTrial = isTrialActive(subCheck);
+    const expiredTrial = isTrialExpired(subCheck);
+    const daysRemaining = getTrialDaysRemaining(subCheck);
     res.json({
       id: String(row.id),
       workspaceId: String(row.workspace_id),
       planCode: String(row.plan_code),
-      planName: String(row.plan_name),
+      planName: activeTrial ? "7-Day Free Trial" : expiredTrial ? "Trial Expired" : String(row.plan_name),
       monthlyPriceCents: Number(row.monthly_price_cents),
-      monthlyAiCredits: Number(row.monthly_ai_credits),
-      maxWorkspaces: Number(row.max_workspaces),
-      maxSocialAccounts: Number(row.max_social_accounts),
-      maxTeamMembers: Number(row.max_team_members),
-      status: String(row.status),
+      monthlyAiCredits: activeTrial ? FREE_TRIAL_AI_CREDITS : Number(row.monthly_ai_credits),
+      maxWorkspaces: expiredTrial ? 1 : Number(row.max_workspaces),
+      maxSocialAccounts: expiredTrial ? 0 : Number(row.max_social_accounts),
+      maxTeamMembers: expiredTrial ? 1 : Number(row.max_team_members),
+      status: rawStatus,
       billingCycle: String(row.billing_cycle),
       currentPeriodStart: String(row.current_period_start),
-      currentPeriodEnd: String(row.current_period_end),
-      hasSubscription: String(row.status) === "active" || String(row.status) === "trialing"
+      currentPeriodEnd,
+      trialEndsAt,
+      trialDaysRemaining: daysRemaining,
+      isTrialActive: activeTrial,
+      isTrialExpired: expiredTrial,
+      hasSubscription: rawStatus === "active" || activeTrial
     });
   });
   router.post("/workspaces/:wid/subscription/change", requireAuth, requireWorkspaceMember, (req, res) => {
     try {
       const wid = String(req.params.wid);
-      const { planCode, billingCycle } = z2.object({
+      const { planCode, billingCycle, payment } = z2.object({
         planCode: z2.enum(["basic", "pro", "enterprise", "starter", "growth", "agency"]),
-        billingCycle: z2.enum(["monthly", "annual"]).default("monthly")
+        billingCycle: z2.enum(["monthly", "annual"]).default("monthly"),
+        payment: z2.object({
+          method: z2.enum(["card", "bank_transfer"]).default("card"),
+          billingEmail: z2.string().email().optional(),
+          cardholderName: z2.string().min(2).max(120).optional(),
+          cardBrand: z2.string().max(40).optional(),
+          cardLast4: z2.string().regex(/^\d{4}$/).optional(),
+          reference: z2.string().min(4).max(120).optional()
+        }).optional()
       }).parse(req.body);
       const plan = db.prepare("SELECT * FROM subscription_plans WHERE code = ?").get(planCode);
       if (!plan) return res.status(404).json({ error: "Plan not found." });
@@ -8494,19 +8909,20 @@ ${cta}` : String(existing.post_copy).trim();
       const now = (/* @__PURE__ */ new Date()).toISOString();
       const nextPeriodEnd = new Date(Date.now() + (billingCycle === "annual" ? 365 : 30) * 86400 * 1e3).toISOString();
       const amountCents = billingCycle === "annual" ? Number(plan.annual_price_cents) : Number(plan.monthly_price_cents);
+      const transactionId = `LT-PAY-${crypto8.randomBytes(4).toString("hex").toUpperCase()}`;
       db.transaction(() => {
-        const existingSub = db.prepare("SELECT id FROM subscriptions WHERE workspace_id = ? ORDER BY updated_at DESC, created_at DESC LIMIT 1").get(wid);
+        const existingSub = db.prepare("SELECT id, status FROM subscriptions WHERE workspace_id = ? ORDER BY updated_at DESC, created_at DESC LIMIT 1").get(wid);
         if (existingSub) {
           db.prepare(`
             UPDATE subscriptions
-            SET plan_id = ?, billing_cycle = ?, status = 'active', current_period_start = ?, current_period_end = ?, updated_at = ?
+            SET plan_id = ?, billing_cycle = ?, status = 'active', current_period_start = ?, current_period_end = ?, provider_subscription_id = ?, updated_at = ?
             WHERE id = ?
-          `).run(plan.id, billingCycle, now, nextPeriodEnd, now, existingSub.id);
+          `).run(plan.id, billingCycle, now, nextPeriodEnd, transactionId, now, existingSub.id);
         } else {
           db.prepare(`
-            INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
-            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
-          `).run(crypto8.randomUUID(), ws.organisation_id, wid, plan.id, billingCycle, now, nextPeriodEnd, now, now);
+            INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, provider_subscription_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)
+          `).run(crypto8.randomUUID(), ws.organisation_id, wid, plan.id, billingCycle, now, nextPeriodEnd, transactionId, now, now);
         }
         db.prepare("UPDATE workspaces SET ai_credits_balance = MAX(ai_credits_balance, ?), updated_at = ? WHERE id = ?").run(
           Number(plan.monthly_ai_credits),
@@ -8517,14 +8933,26 @@ ${cta}` : String(existing.post_copy).trim();
           actorUserId: req.user.id,
           actorEmail: req.user.email,
           workspaceId: wid,
-          action: existingSub ? "billing.plan_changed" : "billing.plan_subscribed",
+          action: existingSub && existingSub.status === "active" ? "billing.plan_changed" : "billing.plan_subscribed",
           resourceType: "subscription",
           resourceId: wid,
-          metadata: { planCode, planName: String(plan.name), billingCycle, amountCents }
+          metadata: {
+            planCode,
+            planName: String(plan.name),
+            billingCycle,
+            amountCents,
+            transactionId,
+            paymentMethod: payment?.method || "card",
+            cardBrand: payment?.cardBrand || null,
+            cardLast4: payment?.cardLast4 || null,
+            paymentReference: payment?.reference || null,
+            billingEmail: payment?.billingEmail || req.user.email
+          }
         });
       })();
       const updatedSub = getWorkspaceSubscriptionSummary(db, wid);
-      res.json({ success: true, planCode, billingCycle, subscription: updatedSub });
+      const workspaces = listUserWorkspaces(db, req.user.id);
+      res.json({ success: true, transactionId, planCode, billingCycle, subscription: updatedSub, workspaces });
     } catch (err) {
       handleRouteError(res, err, 400);
     }
@@ -8545,7 +8973,8 @@ ${cta}` : String(existing.post_copy).trim();
           metadata: { status: "cancelled" }
         });
       }
-      res.json({ success: true });
+      const workspaces = listUserWorkspaces(db, req.user.id);
+      res.json({ success: true, workspaces });
     } catch (err) {
       handleRouteError(res, err, 400);
     }
@@ -8573,6 +9002,9 @@ ${cta}` : String(existing.post_copy).trim();
           planCode: String(meta.planCode || ""),
           billingCycle: String(meta.billingCycle || "monthly"),
           amountCents: Number(meta.amountCents || 0),
+          transactionId: meta.transactionId ? String(meta.transactionId) : void 0,
+          paymentMethod: meta.paymentMethod ? String(meta.paymentMethod) : void 0,
+          cardLast4: meta.cardLast4 ? String(meta.cardLast4) : void 0,
           createdAt: r.created_at
         };
       })
@@ -12750,7 +13182,7 @@ function createExpressApp(db) {
       const originalEnd = res.end.bind(res);
       let persisted = false;
       res.end = (...args) => {
-        if (persisted || res.statusCode >= 400) {
+        if (persisted || res.locals.rtdbPersisted || res.statusCode >= 400) {
           return originalEnd(...args);
         }
         persisted = true;

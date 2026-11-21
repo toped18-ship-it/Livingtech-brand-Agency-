@@ -42,6 +42,7 @@ import type {
   SocialAccountPublishingPreferences,
   SocialAccountRecord,
   SocialPlatformInfo,
+  SubscriptionPaymentDetails,
   SubscriptionPlanRecord,
   SupportTicketRecord,
   SystemSettingRecord,
@@ -517,16 +518,25 @@ export const apiClient = {
     }),
   getSubscription: (wid: string) =>
     request<WorkspaceSubscriptionRecord>(`/api/workspaces/${wid}/subscription`),
-  changeSubscription: (wid: string, planCode: string, billingCycle: 'monthly' | 'annual') =>
-    request<{ success: boolean; planCode: string; billingCycle: 'monthly' | 'annual'; subscription?: WorkspaceSubscriptionRecord }>(
-      `/api/workspaces/${wid}/subscription/change`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ planCode, billingCycle }),
-      }
-    ),
+  changeSubscription: (
+    wid: string,
+    planCode: string,
+    billingCycle: 'monthly' | 'annual',
+    payment?: SubscriptionPaymentDetails
+  ) =>
+    request<{
+      success: boolean;
+      transactionId?: string;
+      planCode: string;
+      billingCycle: 'monthly' | 'annual';
+      subscription?: WorkspaceSubscriptionRecord;
+      workspaces?: WorkspaceSummary[];
+    }>(`/api/workspaces/${wid}/subscription/change`, {
+      method: 'POST',
+      body: JSON.stringify({ planCode, billingCycle, payment }),
+    }),
   cancelSubscription: (wid: string) =>
-    request<{ success: boolean }>(`/api/workspaces/${wid}/subscription/cancel`, {
+    request<{ success: boolean; workspaces?: WorkspaceSummary[] }>(`/api/workspaces/${wid}/subscription/cancel`, {
       method: 'POST',
     }),
   getBillingHistory: (wid: string) =>
@@ -537,6 +547,9 @@ export const apiClient = {
         planCode: string;
         billingCycle: string;
         amountCents: number;
+        transactionId?: string;
+        paymentMethod?: string;
+        cardLast4?: string;
         createdAt: string;
       }[]
     >(`/api/workspaces/${wid}/billing-history`),

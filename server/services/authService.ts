@@ -3,6 +3,13 @@ import type { DbInstance } from '../db/database';
 import { hashPassword, verifyPassword } from '../db/database';
 import { env } from '../env';
 import { slugifyWorkspaceName, validatePasswordStrength } from '../../src/utils/domain';
+import {
+  FREE_TRIAL_AI_CREDITS,
+  FREE_TRIAL_MS,
+  getTrialDaysRemaining,
+  isTrialActive,
+  isTrialExpired,
+} from '../../src/utils/planEntitlements';
 import type { UserProfile, UserRole, WorkspaceSummary } from '../../src/shared/api-contracts';
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -100,6 +107,10 @@ export function getWorkspaceSubscriptionSummary(
       status: 'none',
       billingCycle: 'monthly',
       currentPeriodEnd: null,
+      trialEndsAt: null,
+      trialDaysRemaining: 0,
+      isTrialActive: false,
+      isTrialExpired: false,
       maxWorkspaces: 1,
       maxSocialAccounts: 0,
       maxTeamMembers: 1,
@@ -107,16 +118,37 @@ export function getWorkspaceSubscriptionSummary(
     };
   }
 
-  return {
+  const rawStatus = String(row.status) as NonNullable<WorkspaceSummary['subscription']>['status'];
+  const currentPeriodEnd = row.current_period_end ? String(row.current_period_end) : null;
+  const trialEndsAt = rawStatus === 'trialing' ? currentPeriodEnd : null;
+  const baseSub = {
     planCode: String(row.plan_code) as NonNullable<WorkspaceSummary['subscription']>['planCode'],
-    planName: String(row.plan_name),
-    status: String(row.status) as NonNullable<WorkspaceSummary['subscription']>['status'],
+    status: rawStatus,
+    currentPeriodEnd,
+    trialEndsAt,
+  };
+  const activeTrial = isTrialActive(baseSub);
+  const expiredTrial = isTrialExpired(baseSub);
+  const daysRemaining = getTrialDaysRemaining(baseSub);
+
+  return {
+    planCode: baseSub.planCode,
+    planName: activeTrial
+      ? '7-Day Free Trial'
+      : expiredTrial
+      ? 'Trial Expired'
+      : String(row.plan_name),
+    status: rawStatus,
     billingCycle: String(row.billing_cycle) === 'annual' ? 'annual' : 'monthly',
-    currentPeriodEnd: row.current_period_end ? String(row.current_period_end) : null,
-    maxWorkspaces: Number(row.max_workspaces || 1),
-    maxSocialAccounts: Number(row.max_social_accounts || 0),
-    maxTeamMembers: Number(row.max_team_members || 1),
-    monthlyAiCredits: Number(row.monthly_ai_credits || 0),
+    currentPeriodEnd,
+    trialEndsAt,
+    trialDaysRemaining: daysRemaining,
+    isTrialActive: activeTrial,
+    isTrialExpired: expiredTrial,
+    maxWorkspaces: expiredTrial ? 1 : Number(row.max_workspaces || 1),
+    maxSocialAccounts: expiredTrial ? 0 : Number(row.max_social_accounts || 0),
+    maxTeamMembers: expiredTrial ? 1 : Number(row.max_team_members || 1),
+    monthlyAiCredits: expiredTrial ? 0 : activeTrial ? FREE_TRIAL_AI_CREDITS : Number(row.monthly_ai_credits || 0),
   };
 }
 
@@ -286,6 +318,7 @@ export function registerUserWithWorkspace(
     fullName: string;
     workspaceName?: string;
     industry?: string;
+    externalUid?: string | null;
   }
 ) {
   const email = input.email.trim().toLowerCase();
@@ -311,14 +344,19 @@ export function registerUserWithWorkspace(
   const wsName = (input.workspaceName || `${input.fullName.split(' ')[0]}'s Brand Workspace`).trim();
   const slugBase = slugifyWorkspaceName(wsName);
   const uniqueSlug = `${slugBase}-${crypto.randomBytes(3).toString('hex')}`;
-  const initialCredits = 0;
+  const initialCredits = FREE_TRIAL_AI_CREDITS;
+  const trialEndsAt = new Date(Date.now() + FREE_TRIAL_MS).toISOString();
+  const trialPlan =
+    (db.prepare("SELECT id FROM subscription_plans WHERE code = 'enterprise'").get() as { id: string } | undefined) ||
+    (db.prepare("SELECT id FROM subscription_plans WHERE code = 'pro'").get() as { id: string } | undefined) ||
+    (db.prepare("SELECT id FROM subscription_plans WHERE code = 'basic'").get() as { id: string } | undefined);
   const verifyToken = crypto.randomBytes(20).toString('hex');
 
   const tx = db.transaction(() => {
     db.prepare(`
-      INSERT INTO users (id, auth_provider, email, password_hash, full_name, role_slug, email_verified, status, timezone, preferred_language, created_at, updated_at)
-      VALUES (?, 'password', ?, ?, ?, 'customer', 0, 'active', 'UTC', 'en', ?, ?)
-    `).run(userId, email, hashPassword(input.password), input.fullName.trim(), now, now);
+      INSERT INTO users (id, auth_provider, external_uid, email, password_hash, full_name, role_slug, email_verified, status, timezone, preferred_language, created_at, updated_at)
+      VALUES (?, 'password', ?, ?, ?, ?, 'customer', 0, 'active', 'UTC', 'en', ?, ?)
+    `).run(userId, input.externalUid ?? null, email, hashPassword(input.password), input.fullName.trim(), now, now);
 
     db.prepare(`
       INSERT INTO organisations (id, owner_user_id, name, slug, billing_email, created_at, updated_at)
@@ -342,9 +380,16 @@ export function registerUserWithWorkspace(
       VALUES (?, ?, ?, ?, 'workspace_admin', 'active', ?, ?, ?)
     `).run(crypto.randomUUID(), wsId, userId, email, userId, now, now);
 
+    if (trialPlan) {
+      db.prepare(`
+        INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'trialing', 'monthly', ?, ?, ?, ?)
+      `).run(crypto.randomUUID(), orgId, wsId, trialPlan.id, now, trialEndsAt, now, now);
+    }
+
     db.prepare(`
       INSERT INTO notifications (id, workspace_id, user_id, category, title, body, is_read, created_at, updated_at)
-      VALUES (?, ?, ?, 'billing', 'Select Your Subscription Plan', 'Your workspace is ready. Visit Billing & Subscriptions to choose Basic, Pro, or Enterprise and unlock your package modules.', 0, ?, ?)
+      VALUES (?, ?, ?, 'billing', '7-Day Free Trial Activated', 'Welcome! Enjoy full access free for 7 days with 100 trial AI credits. After 7 days, choose Basic, Pro, or Enterprise under Billing & Subscriptions to continue.', 0, ?, ?)
     `).run(crypto.randomUUID(), wsId, userId, now, now);
 
     const verifyExpires = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
@@ -409,6 +454,125 @@ export function loginWithPassword(db: DbInstance, emailInput: string, password: 
   };
 }
 
+/**
+ * Syncs or restores a user whose email + password was just verified directly by Firebase Authentication.
+ * Ensures login always succeeds even across stateless serverless cold starts before RTDB credentials are configured.
+ */
+export function provisionOrSyncVerifiedEmailUser(
+  db: DbInstance,
+  input: { externalUid: string; email: string; password: string; fullName: string }
+) {
+  const email = input.email.trim().toLowerCase();
+  const now = new Date().toISOString();
+  let row = db
+    .prepare('SELECT * FROM users WHERE external_uid = ? OR email = ?')
+    .get(input.externalUid, email) as Record<string, unknown> | undefined;
+
+  if (!row) {
+    const userId = crypto.randomUUID();
+    const orgId = crypto.randomUUID();
+    const wsId = crypto.randomUUID();
+    const role: UserRole = email === 'livingstoneedu64@gmail.com' ? 'super_admin' : 'customer';
+    const displayName = input.fullName.trim() || email.split('@')[0];
+    const wsName = `${displayName.split(' ')[0]}'s Brand Workspace`;
+    const uniqueSlug = `${slugifyWorkspaceName(wsName)}-${crypto.randomBytes(3).toString('hex')}`;
+    const trialPlan =
+      (db.prepare("SELECT id FROM subscription_plans WHERE code = 'enterprise'").get() as { id: string } | undefined) ||
+      (db.prepare("SELECT id FROM subscription_plans WHERE code = 'pro'").get() as { id: string } | undefined) ||
+      (db.prepare("SELECT id FROM subscription_plans WHERE code = 'basic'").get() as { id: string } | undefined);
+    const periodEnd =
+      role === 'super_admin'
+        ? new Date(Date.now() + 365 * 86400 * 1000).toISOString()
+        : new Date(Date.now() + FREE_TRIAL_MS).toISOString();
+
+    db.transaction(() => {
+      db.prepare(`
+        INSERT INTO users (id, auth_provider, external_uid, email, password_hash, full_name, role_slug, email_verified, status, timezone, preferred_language, created_at, updated_at)
+        VALUES (?, 'password', ?, ?, ?, ?, ?, 0, 'active', 'UTC', 'en', ?, ?)
+      `).run(userId, input.externalUid, email, hashPassword(input.password), displayName, role, now, now);
+
+      db.prepare(`
+        INSERT INTO organisations (id, owner_user_id, name, slug, billing_email, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(orgId, userId, wsName, uniqueSlug, email, now, now);
+
+      db.prepare(`
+        INSERT INTO workspaces (id, organisation_id, owner_user_id, name, slug, timezone, preferred_language, ai_credits_balance, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'UTC', 'en', ?, ?, ?)
+      `).run(wsId, orgId, userId, wsName, uniqueSlug, role === 'super_admin' ? 15000 : FREE_TRIAL_AI_CREDITS, now, now);
+
+      db.prepare(`
+        INSERT INTO brand_profiles (
+          id, workspace_id, brand_name, logo_url, primary_color, secondary_color, accent_color,
+          business_description, industry, target_audience, tone_of_voice, preferred_language, timezone, created_at, updated_at
+        ) VALUES (?, ?, ?, '', '#0052FF', '#071436', '#F59E0B', '', '', '', 'Professional & Modern', 'en', 'UTC', ?, ?)
+      `).run(crypto.randomUUID(), wsId, wsName, now, now);
+
+      db.prepare(`
+        INSERT INTO workspace_members (id, workspace_id, user_id, invited_email, role_slug, status, invited_by, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'workspace_admin', 'active', ?, ?, ?)
+      `).run(crypto.randomUUID(), wsId, userId, email, userId, now, now);
+
+      if (trialPlan) {
+        db.prepare(`
+          INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          crypto.randomUUID(),
+          orgId,
+          wsId,
+          trialPlan.id,
+          role === 'super_admin' ? 'active' : 'trialing',
+          role === 'super_admin' ? 'annual' : 'monthly',
+          now,
+          periodEnd,
+          now,
+          now
+        );
+      }
+
+      db.prepare(`
+        INSERT INTO notifications (id, workspace_id, user_id, category, title, body, is_read, created_at, updated_at)
+        VALUES (?, ?, ?, 'billing', '7-Day Free Trial Activated', 'Welcome! Enjoy full access free for 7 days with 100 trial AI credits. After 7 days, choose Basic, Pro, or Enterprise under Billing & Subscriptions to continue.', 0, ?, ?)
+      `).run(crypto.randomUUID(), wsId, userId, now, now);
+    })();
+
+    row = db.prepare('SELECT * FROM users WHERE id = ?').get(userId) as Record<string, unknown>;
+  } else {
+    if (row.status === 'suspended') {
+      throw new Error('This account has been suspended. Contact support for assistance.');
+    }
+    if (row.status === 'deleted') {
+      throw new Error('This account is scheduled for deletion. Use Account Recovery to restore access.');
+    }
+    db.prepare(`
+      UPDATE users
+      SET external_uid = COALESCE(external_uid, ?),
+          password_hash = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(input.externalUid, hashPassword(input.password), now, row.id);
+    row = db.prepare('SELECT * FROM users WHERE id = ?').get(row.id) as Record<string, unknown>;
+  }
+
+  const user = mapUserRow(row);
+  const token = createSession(db, user.id);
+  recordAuditLog(db, {
+    actorUserId: user.id,
+    actorEmail: user.email,
+    action: 'auth.login',
+    resourceType: 'session',
+    resourceId: user.id,
+    metadata: { verifiedVia: 'firebase_auth' },
+  });
+
+  return {
+    user,
+    workspaces: listUserWorkspaces(db, user.id),
+    token,
+  };
+}
+
 export function syncFirebaseGoogleUser(
   db: DbInstance,
   input: { externalUid: string; email: string; fullName: string; avatarUrl?: string | null; emailVerified: boolean }
@@ -424,11 +588,13 @@ export function syncFirebaseGoogleUser(
     const role: UserRole = email === 'livingstoneedu64@gmail.com' ? 'super_admin' : 'customer';
     const wsName = `${input.fullName.split(' ')[0]}'s Agency Workspace`;
     const uniqueSlug = `${slugifyWorkspaceName(wsName)}-${crypto.randomBytes(3).toString('hex')}`;
-    const enterprisePlan =
+    const enterprisePlan = db.prepare("SELECT id FROM subscription_plans WHERE code = 'enterprise'").get() as
+      | { id: string }
+      | undefined;
+    const periodEnd =
       role === 'super_admin'
-        ? (db.prepare("SELECT id FROM subscription_plans WHERE code = 'enterprise'").get() as { id: string } | undefined)
-        : undefined;
-    const periodEnd = new Date(Date.now() + 365 * 86400 * 1000).toISOString();
+        ? new Date(Date.now() + 365 * 86400 * 1000).toISOString()
+        : new Date(Date.now() + FREE_TRIAL_MS).toISOString();
 
     db.transaction(() => {
       db.prepare(`
@@ -444,7 +610,7 @@ export function syncFirebaseGoogleUser(
       db.prepare(`
         INSERT INTO workspaces (id, organisation_id, owner_user_id, name, slug, timezone, preferred_language, ai_credits_balance, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, 'UTC', 'en', ?, ?, ?)
-      `).run(wsId, orgId, userId, wsName, uniqueSlug, role === 'super_admin' ? 15000 : 0, now, now);
+      `).run(wsId, orgId, userId, wsName, uniqueSlug, role === 'super_admin' ? 15000 : FREE_TRIAL_AI_CREDITS, now, now);
 
       db.prepare(`
         INSERT INTO brand_profiles (
@@ -461,8 +627,19 @@ export function syncFirebaseGoogleUser(
       if (enterprisePlan) {
         db.prepare(`
           INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
-          VALUES (?, ?, ?, ?, 'active', 'annual', ?, ?, ?, ?)
-        `).run(crypto.randomUUID(), orgId, wsId, enterprisePlan.id, now, periodEnd, now, now);
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          crypto.randomUUID(),
+          orgId,
+          wsId,
+          enterprisePlan.id,
+          role === 'super_admin' ? 'active' : 'trialing',
+          role === 'super_admin' ? 'annual' : 'monthly',
+          now,
+          periodEnd,
+          now,
+          now
+        );
       }
     })();
 

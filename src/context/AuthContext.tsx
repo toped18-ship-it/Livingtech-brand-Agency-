@@ -1,6 +1,11 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { apiClient, onSessionUnauthorized, setStoredToken } from '../lib/apiClient';
-import { signInWithGooglePopup, signOutFirebase, syncSessionSnapshotToRtdb } from '../lib/firebase';
+import { ApiError, apiClient, onSessionUnauthorized, setStoredToken } from '../lib/apiClient';
+import {
+  signInFirebaseEmailPassword,
+  signInWithGooglePopup,
+  signOutFirebase,
+  syncSessionSnapshotToRtdb,
+} from '../lib/firebase';
 import type { UserProfile, WorkspaceSummary } from '../shared/api-contracts';
 
 const ACTIVE_WS_KEY = 'lt_active_workspace_id';
@@ -67,10 +72,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSessionNotice(null);
       if (data.token) setStoredToken(data.token);
       selectWorkspace(data.workspaces, activeWorkspaceId);
-    } catch {
-      setUser(null);
-      setWorkspaces([]);
-      setStoredToken(null);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setUser(null);
+        setWorkspaces([]);
+        setStoredToken(null);
+      }
     } finally {
       setLoading(false);
     }
@@ -105,7 +112,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(res.user);
     setSessionNotice(null);
     selectWorkspace(res.workspaces);
-    void syncSessionSnapshotToRtdb(res.user, res.workspaces);
+    void signInFirebaseEmailPassword(email, password).then(() =>
+      syncSessionSnapshotToRtdb(res.user, res.workspaces)
+    );
   }, [selectWorkspace]);
 
   const register = useCallback(
@@ -121,7 +130,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(res.user);
       setSessionNotice(null);
       selectWorkspace(res.workspaces);
-      void syncSessionSnapshotToRtdb(res.user, res.workspaces);
+      void signInFirebaseEmailPassword(input.email, input.password).then(() =>
+        syncSessionSnapshotToRtdb(res.user, res.workspaces)
+      );
       return { verificationToken: res.verificationToken };
     },
     [selectWorkspace]
