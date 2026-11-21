@@ -69,14 +69,12 @@ test('node:sqlite driver matches better-sqlite3 for full schema, transactions, a
   }
 });
 
-test('compiled api/server.cjs boots and serves real HTTP requests in plain Node.js under VERCEL=1', async () => {
-  const bundlePath = path.resolve(process.cwd(), 'api', 'server.cjs');
-  if (!fs.existsSync(bundlePath)) {
-    execFileSync(process.execPath, [path.resolve(process.cwd(), 'scripts', 'build-vercel-api.mjs')], {
-      stdio: 'pipe',
-    });
-  }
-  assert.ok(fs.existsSync(bundlePath), 'Expected api/server.cjs to be built');
+test('compiled ESM api/index.js boots and handles GET/POST auth requests in plain Node.js under VERCEL=1', async () => {
+  const bundlePath = path.resolve(process.cwd(), 'api', 'index.js');
+  execFileSync(process.execPath, [path.resolve(process.cwd(), 'scripts', 'build-vercel-api.mjs')], {
+    stdio: 'pipe',
+  });
+  assert.ok(fs.existsSync(bundlePath), 'Expected api/index.js to be built');
 
   // Remove any leftover ephemeral SQLite file from earlier runs
   const tmpDbPath = '/tmp/livingtech.db';
@@ -88,12 +86,14 @@ test('compiled api/server.cjs boots and serves real HTTP requests in plain Node.
     }
   }
 
-  // Launch a real plain Node.js subprocess (NOT tsx) simulating Vercel's exact runtime
+  // Launch a real plain Node.js ESM subprocess (NOT tsx) simulating Vercel's exact Node 22 runtime
   const probeScript = `
-    const http = require('node:http');
-    const handler = require(${JSON.stringify(bundlePath)});
+    import http from 'node:http';
+    import { pathToFileURL } from 'node:url';
+    const mod = await import(pathToFileURL(${JSON.stringify(bundlePath)}).href);
+    const handler = mod.default;
     if (typeof handler !== 'function') {
-      console.error('Exported handler is not a function:', typeof handler);
+      console.error('Exported default handler is not a function:', typeof handler);
       process.exit(2);
     }
     const server = http.createServer((req, res) => handler(req, res));
@@ -103,7 +103,7 @@ test('compiled api/server.cjs boots and serves real HTTP requests in plain Node.
     });
   `;
 
-  const child = spawn(process.execPath, ['-e', probeScript], {
+  const child = spawn(process.execPath, ['--input-type=module', '-e', probeScript], {
     env: {
       ...process.env,
       VERCEL: '1',
@@ -120,7 +120,7 @@ test('compiled api/server.cjs boots and serves real HTTP requests in plain Node.
   });
 
   const port = await new Promise<number>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`Timed out booting api/server.cjs. stderr: ${stderr}`)), 10000);
+    const timer = setTimeout(() => reject(new Error(`Timed out booting api/index.js. stderr: ${stderr}`)), 10000);
     let buf = '';
     child.stdout.on('data', (chunk) => {
       buf += chunk.toString();
@@ -132,7 +132,7 @@ test('compiled api/server.cjs boots and serves real HTTP requests in plain Node.
     });
     child.on('exit', (code) => {
       clearTimeout(timer);
-      reject(new Error(`api/server.cjs subprocess exited prematurely (${code}). stderr: ${stderr}`));
+      reject(new Error(`api/index.js subprocess exited prematurely (${code}). stderr: ${stderr}`));
     });
   });
 
@@ -142,8 +142,9 @@ test('compiled api/server.cjs boots and serves real HTTP requests in plain Node.
     // 1. Health check
     const healthRes = await fetch(`${baseUrl}/api/health`);
     assert.equal(healthRes.status, 200, `Expected 200 on /api/health, got ${healthRes.status}`);
-    const healthJson = (await healthRes.json()) as { status: string };
+    const healthJson = (await healthRes.json()) as { status: string; storage: string };
     assert.equal(healthJson.status, 'ok');
+    assert.equal(healthJson.storage, 'sql');
 
     // 2. Public subscription plans
     const plansRes = await fetch(`${baseUrl}/api/plans`);
@@ -158,13 +159,14 @@ test('compiled api/server.cjs boots and serves real HTTP requests in plain Node.
     const settingsRes = await fetch(`${baseUrl}/api/settings`);
     assert.equal(settingsRes.status, 200);
 
-    // 4. Register a brand-new user + verify session cookie on /api/auth/me
+    // 4. POST /api/auth/register + verify session cookie on /api/auth/me
+    const testEmail = `vercel-client-${Date.now()}@example.com`;
     const regRes = await fetch(`${baseUrl}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         fullName: 'Vercel Test Client',
-        email: `vercel-client-${Date.now()}@example.com`,
+        email: testEmail,
         password: 'VercelPassword2026!',
         workspaceName: 'Vercel Test Brand',
         industry: 'Agency',
@@ -183,7 +185,20 @@ test('compiled api/server.cjs boots and serves real HTTP requests in plain Node.
     assert.equal(meJson.user.fullName, 'Vercel Test Client');
     assert.equal(meJson.workspaces[0].name, 'Vercel Test Brand');
 
-    // 5. OAuth route through serverless function
+    // 5. POST /api/auth/login with the newly registered account
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: testEmail,
+        password: 'VercelPassword2026!',
+      }),
+    });
+    assert.equal(loginRes.status, 200, `Expected 200 on /api/auth/login, got ${loginRes.status}`);
+    const loginJson = (await loginRes.json()) as { user: { email: string } };
+    assert.equal(loginJson.user.email, testEmail);
+
+    // 6. OAuth route through serverless function
     const oauthRes = await fetch(`${baseUrl}/auth/oauth/sandbox-consent?platform=instagram&state=test123`);
     assert.equal(oauthRes.status, 200);
     const oauthHtml = await oauthRes.text();

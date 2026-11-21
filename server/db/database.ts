@@ -25,7 +25,9 @@ export function verifyPassword(password: string, storedHash: string): boolean {
 
 export function initDatabase(dbPath?: string, options?: { forceDriver?: SqliteDriverName }): DbInstance {
   const isServerless = process.env.VERCEL === '1' || process.env.AWS_LAMBDA_FUNCTION_VERSION !== undefined;
-  const defaultPath = isServerless ? '/tmp/livingtech.db' : path.resolve(process.cwd(), 'data', 'livingtech.db');
+  const configuredPath = process.env.SQLITE_DB_PATH?.trim() || undefined;
+  const defaultPath =
+    configuredPath ?? (isServerless ? '/tmp/livingtech.db' : path.resolve(process.cwd(), 'data', 'livingtech.db'));
   const targetPath = dbPath ?? defaultPath;
   if (targetPath !== ':memory:') {
     fs.mkdirSync(path.dirname(targetPath), { recursive: true });

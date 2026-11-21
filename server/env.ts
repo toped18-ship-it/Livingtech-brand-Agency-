@@ -16,6 +16,7 @@ const EnvSchema = z.object({
     z.enum(['development', 'production', 'test']).default('development')
   ),
   APP_URL: z.preprocess(emptyToUndefined, z.string().optional()),
+  SQLITE_DB_PATH: z.preprocess(emptyToUndefined, z.string().optional()),
   SESSION_SECRET: z.string().optional(),
   TOKEN_ENCRYPTION_KEY: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),

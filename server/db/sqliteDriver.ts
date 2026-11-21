@@ -34,9 +34,6 @@ interface RawNodeSqliteDb {
 }
 
 function getRuntimeRequire(): NodeRequire {
-  if (typeof require === 'function') {
-    return require;
-  }
   return createRequire(import.meta.url);
 }
 

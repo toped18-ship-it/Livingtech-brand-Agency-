@@ -175,7 +175,12 @@ export function createApiRouter(db: DbInstance): Router {
   // HEALTH & PUBLIC CATALOG
   // ===========================================================================
   router.get('/health', (_req, res) => {
-    res.json({ status: 'ok', service: 'livingtech-brand-agency-api', timestamp: new Date().toISOString() });
+    res.json({
+      status: 'ok',
+      storage: 'sql',
+      service: 'livingtech-brand-agency-api',
+      timestamp: new Date().toISOString(),
+    });
   });
 
   router.get('/settings', (_req, res) => {

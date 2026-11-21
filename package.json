@@ -12,7 +12,7 @@
     "worker": "tsx server/worker.ts",
     "build": "vite build && node scripts/build-vercel-api.mjs",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js api/server.cjs",
+    "clean": "rm -rf dist server.js api/index.js",
     "lint": "tsc --noEmit",
     "test": "tsx --test src/utils/domain.test.ts src/utils/planEntitlements.test.ts server/core.test.ts server/phase2-integrations.test.ts server/phase3-ai-publishing.test.ts server/vercel-serverless.test.ts firestore.rules.test.ts"
   },

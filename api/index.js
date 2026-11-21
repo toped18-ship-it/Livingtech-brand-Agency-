@@ -1,95 +1,62 @@
-// Auto-generated Vercel Serverless Express handler. Source: server/vercel-entry.ts
-var __create = Object.create;
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __getProtoOf = Object.getPrototypeOf;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
-};
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-  // If the importer is in node compatibility mode or this is not an ESM
-  // file that has been converted to a CommonJS file using a Babel-
-  // compatible transform (i.e. "__esModule" has not been set), then set
-  // "default" to the CommonJS "module.exports" for node compatibility.
-  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
-  mod
-));
-var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-
-// server/vercel-entry.ts
-var vercel_entry_exports = {};
-__export(vercel_entry_exports, {
-  default: () => handler
-});
-module.exports = __toCommonJS(vercel_entry_exports);
+// Auto-generated Vercel Serverless Express handler (ESM). Source: server/vercel-entry.ts
 
 // server/db/database.ts
-var import_node_crypto2 = __toESM(require("node:crypto"), 1);
-var import_node_fs2 = __toESM(require("node:fs"), 1);
-var import_node_path2 = __toESM(require("node:path"), 1);
+import crypto2 from "node:crypto";
+import fs2 from "node:fs";
+import path2 from "node:path";
 
 // server/env.ts
-var import_zod = require("zod");
-var import_node_crypto = __toESM(require("node:crypto"), 1);
-var import_node_fs = __toESM(require("node:fs"), 1);
-var import_node_path = __toESM(require("node:path"), 1);
-var import_dotenv = __toESM(require("dotenv"), 1);
-import_dotenv.default.config();
+import { z } from "zod";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import dotenv from "dotenv";
+dotenv.config();
 var emptyToUndefined = (val) => typeof val === "string" && val.trim() === "" ? void 0 : val;
-var EnvSchema = import_zod.z.object({
-  PORT: import_zod.z.preprocess(emptyToUndefined, import_zod.z.coerce.number().int().min(1).max(65535).default(3e3)),
-  NODE_ENV: import_zod.z.preprocess(
+var EnvSchema = z.object({
+  PORT: z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).max(65535).default(3e3)),
+  NODE_ENV: z.preprocess(
     (val) => val === "development" || val === "production" || val === "test" ? val : void 0,
-    import_zod.z.enum(["development", "production", "test"]).default("development")
+    z.enum(["development", "production", "test"]).default("development")
   ),
-  APP_URL: import_zod.z.preprocess(emptyToUndefined, import_zod.z.string().optional()),
-  SESSION_SECRET: import_zod.z.string().optional(),
-  TOKEN_ENCRYPTION_KEY: import_zod.z.string().optional(),
-  GEMINI_API_KEY: import_zod.z.string().optional(),
-  META_APP_ID: import_zod.z.string().optional(),
-  META_APP_SECRET: import_zod.z.string().optional(),
-  META_CLIENT_ID: import_zod.z.string().optional(),
-  META_CLIENT_SECRET: import_zod.z.string().optional(),
-  LINKEDIN_CLIENT_ID: import_zod.z.string().optional(),
-  LINKEDIN_CLIENT_SECRET: import_zod.z.string().optional(),
-  X_CLIENT_ID: import_zod.z.string().optional(),
-  X_CLIENT_SECRET: import_zod.z.string().optional(),
-  TIKTOK_CLIENT_KEY: import_zod.z.string().optional(),
-  TIKTOK_CLIENT_SECRET: import_zod.z.string().optional(),
-  TIKTOK_CLIENT_ID: import_zod.z.string().optional(),
-  GOOGLE_YOUTUBE_CLIENT_ID: import_zod.z.string().optional(),
-  GOOGLE_YOUTUBE_CLIENT_SECRET: import_zod.z.string().optional(),
-  YOUTUBE_CLIENT_ID: import_zod.z.string().optional(),
-  YOUTUBE_CLIENT_SECRET: import_zod.z.string().optional(),
-  PINTEREST_CLIENT_ID: import_zod.z.string().optional(),
-  PINTEREST_CLIENT_SECRET: import_zod.z.string().optional(),
-  PINTEREST_APP_ID: import_zod.z.string().optional(),
-  PINTEREST_APP_SECRET: import_zod.z.string().optional(),
-  GOOGLE_BUSINESS_CLIENT_ID: import_zod.z.string().optional(),
-  GOOGLE_BUSINESS_CLIENT_SECRET: import_zod.z.string().optional(),
-  GOOGLE_CLIENT_ID: import_zod.z.string().optional(),
-  GOOGLE_CLIENT_SECRET: import_zod.z.string().optional(),
-  REDIS_URL: import_zod.z.string().optional(),
-  ENABLE_EMBEDDED_WORKER: import_zod.z.preprocess(emptyToUndefined, import_zod.z.string().optional().default("true")),
-  WORKER_POLL_INTERVAL_MS: import_zod.z.preprocess(
+  APP_URL: z.preprocess(emptyToUndefined, z.string().optional()),
+  SQLITE_DB_PATH: z.preprocess(emptyToUndefined, z.string().optional()),
+  SESSION_SECRET: z.string().optional(),
+  TOKEN_ENCRYPTION_KEY: z.string().optional(),
+  GEMINI_API_KEY: z.string().optional(),
+  META_APP_ID: z.string().optional(),
+  META_APP_SECRET: z.string().optional(),
+  META_CLIENT_ID: z.string().optional(),
+  META_CLIENT_SECRET: z.string().optional(),
+  LINKEDIN_CLIENT_ID: z.string().optional(),
+  LINKEDIN_CLIENT_SECRET: z.string().optional(),
+  X_CLIENT_ID: z.string().optional(),
+  X_CLIENT_SECRET: z.string().optional(),
+  TIKTOK_CLIENT_KEY: z.string().optional(),
+  TIKTOK_CLIENT_SECRET: z.string().optional(),
+  TIKTOK_CLIENT_ID: z.string().optional(),
+  GOOGLE_YOUTUBE_CLIENT_ID: z.string().optional(),
+  GOOGLE_YOUTUBE_CLIENT_SECRET: z.string().optional(),
+  YOUTUBE_CLIENT_ID: z.string().optional(),
+  YOUTUBE_CLIENT_SECRET: z.string().optional(),
+  PINTEREST_CLIENT_ID: z.string().optional(),
+  PINTEREST_CLIENT_SECRET: z.string().optional(),
+  PINTEREST_APP_ID: z.string().optional(),
+  PINTEREST_APP_SECRET: z.string().optional(),
+  GOOGLE_BUSINESS_CLIENT_ID: z.string().optional(),
+  GOOGLE_BUSINESS_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  REDIS_URL: z.string().optional(),
+  ENABLE_EMBEDDED_WORKER: z.preprocess(emptyToUndefined, z.string().optional().default("true")),
+  WORKER_POLL_INTERVAL_MS: z.preprocess(
     emptyToUndefined,
-    import_zod.z.coerce.number().int().min(1e3).max(3e5).default(15e3)
+    z.coerce.number().int().min(1e3).max(3e5).default(15e3)
   ),
-  IMAGE_GENERATION_API_URL: import_zod.z.string().optional(),
-  IMAGE_GENERATION_API_KEY: import_zod.z.string().optional(),
-  IMAGE_GENERATION_MODEL: import_zod.z.string().optional(),
-  ENABLE_PAID_GEMINI_IMAGE_MODEL: import_zod.z.preprocess(emptyToUndefined, import_zod.z.string().optional().default("false"))
+  IMAGE_GENERATION_API_URL: z.string().optional(),
+  IMAGE_GENERATION_API_KEY: z.string().optional(),
+  IMAGE_GENERATION_MODEL: z.string().optional(),
+  ENABLE_PAID_GEMINI_IMAGE_MODEL: z.preprocess(emptyToUndefined, z.string().optional().default("false"))
 });
 var rawParsed = EnvSchema.safeParse(process.env);
 if (!rawParsed.success) {
@@ -105,14 +72,14 @@ function loadOrCreateRuntimeSecrets(secretsFilePath) {
   if (isServerless) {
     const seed = process.env.VERCEL_PROJECT_ID || process.env.VERCEL_GIT_REPO_ID || process.env.K_SERVICE || process.env.APP_URL || "livingtech-brand-agency-serverless";
     return {
-      sessionSecret: import_node_crypto.default.createHash("sha256").update(`lt-session::${seed}`).digest("hex"),
-      tokenEncryptionKey: import_node_crypto.default.createHash("sha256").update(`lt-token-enc::${seed}`).digest("hex")
+      sessionSecret: crypto.createHash("sha256").update(`lt-session::${seed}`).digest("hex"),
+      tokenEncryptionKey: crypto.createHash("sha256").update(`lt-token-enc::${seed}`).digest("hex")
     };
   }
-  const targetPath = secretsFilePath ?? import_node_path.default.resolve(process.cwd(), "data", ".runtime-secrets.json");
+  const targetPath = secretsFilePath ?? path.resolve(process.cwd(), "data", ".runtime-secrets.json");
   try {
-    if (import_node_fs.default.existsSync(targetPath)) {
-      const raw = JSON.parse(import_node_fs.default.readFileSync(targetPath, "utf8"));
+    if (fs.existsSync(targetPath)) {
+      const raw = JSON.parse(fs.readFileSync(targetPath, "utf8"));
       if (typeof raw.sessionSecret === "string" && raw.sessionSecret.length >= 32 && typeof raw.tokenEncryptionKey === "string" && raw.tokenEncryptionKey.length >= 32) {
         return {
           sessionSecret: raw.sessionSecret,
@@ -123,12 +90,12 @@ function loadOrCreateRuntimeSecrets(secretsFilePath) {
   } catch {
   }
   const generated = {
-    sessionSecret: import_node_crypto.default.randomBytes(32).toString("hex"),
-    tokenEncryptionKey: import_node_crypto.default.randomBytes(32).toString("hex")
+    sessionSecret: crypto.randomBytes(32).toString("hex"),
+    tokenEncryptionKey: crypto.randomBytes(32).toString("hex")
   };
   try {
-    import_node_fs.default.mkdirSync(import_node_path.default.dirname(targetPath), { recursive: true });
-    import_node_fs.default.writeFileSync(targetPath, JSON.stringify(generated, null, 2), { encoding: "utf8", mode: 384 });
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+    fs.writeFileSync(targetPath, JSON.stringify(generated, null, 2), { encoding: "utf8", mode: 384 });
   } catch {
   }
   return generated;
@@ -2713,13 +2680,9 @@ function isValidPlatformKey(key) {
 }
 
 // server/db/sqliteDriver.ts
-var import_node_module = require("node:module");
-var import_meta = {};
+import { createRequire } from "node:module";
 function getRuntimeRequire() {
-  if (typeof require === "function") {
-    return require;
-  }
-  return (0, import_node_module.createRequire)(import_meta.url);
+  return createRequire(import.meta.url);
 }
 function normalizeParam(value) {
   if (value === void 0) return null;
@@ -2841,24 +2804,25 @@ function openSqliteDatabase(targetPath, options) {
 
 // server/db/database.ts
 function hashPassword(password) {
-  const salt = import_node_crypto2.default.randomBytes(16).toString("hex");
-  const derived = import_node_crypto2.default.scryptSync(password, salt, 64).toString("hex");
+  const salt = crypto2.randomBytes(16).toString("hex");
+  const derived = crypto2.scryptSync(password, salt, 64).toString("hex");
   return `${salt}:${derived}`;
 }
 function verifyPassword(password, storedHash) {
   const [salt, key] = storedHash.split(":");
   if (!salt || !key) return false;
-  const derived = import_node_crypto2.default.scryptSync(password, salt, 64);
+  const derived = crypto2.scryptSync(password, salt, 64);
   const keyBuf = Buffer.from(key, "hex");
   if (derived.length !== keyBuf.length) return false;
-  return import_node_crypto2.default.timingSafeEqual(derived, keyBuf);
+  return crypto2.timingSafeEqual(derived, keyBuf);
 }
 function initDatabase(dbPath, options) {
   const isServerless = process.env.VERCEL === "1" || process.env.AWS_LAMBDA_FUNCTION_VERSION !== void 0;
-  const defaultPath = isServerless ? "/tmp/livingtech.db" : import_node_path2.default.resolve(process.cwd(), "data", "livingtech.db");
+  const configuredPath = process.env.SQLITE_DB_PATH?.trim() || void 0;
+  const defaultPath = configuredPath ?? (isServerless ? "/tmp/livingtech.db" : path2.resolve(process.cwd(), "data", "livingtech.db"));
   const targetPath = dbPath ?? defaultPath;
   if (targetPath !== ":memory:") {
-    import_node_fs2.default.mkdirSync(import_node_path2.default.dirname(targetPath), { recursive: true });
+    fs2.mkdirSync(path2.dirname(targetPath), { recursive: true });
   }
   const { db } = openSqliteDatabase(targetPath, options);
   db.pragma("foreign_keys = ON");
@@ -3708,7 +3672,7 @@ function seedReferenceData(db) {
     VALUES (?, ?, ?, ?, ?, ?)
   `);
   for (const [slug, name, desc] of roleSeeds) {
-    insertRole.run(import_node_crypto2.default.randomUUID(), slug, name, desc, now, now);
+    insertRole.run(crypto2.randomUUID(), slug, name, desc, now, now);
   }
   const insertPlatform = db.prepare(`
     INSERT OR IGNORE INTO social_platforms (
@@ -3744,7 +3708,7 @@ function seedReferenceData(db) {
   for (const provider of SOCIAL_PROVIDER_LIST) {
     const scopeStr = provider.permissions.map((p) => p.scopeKey).join(",");
     insertPlatform.run(
-      import_node_crypto2.default.randomUUID(),
+      crypto2.randomUUID(),
       provider.key,
       provider.displayName,
       provider.oauthAuthorizeUrl,
@@ -3757,7 +3721,7 @@ function seedReferenceData(db) {
     );
     for (const perm of provider.permissions) {
       insertPermission.run(
-        import_node_crypto2.default.randomUUID(),
+        crypto2.randomUUID(),
         provider.key,
         perm.scopeKey,
         perm.label,
@@ -3886,7 +3850,7 @@ function seedReferenceData(db) {
   `);
   for (const p of plans) {
     insertPlan.run(
-      import_node_crypto2.default.randomUUID(),
+      crypto2.randomUUID(),
       p[0],
       p[1],
       p[2],
@@ -3997,13 +3961,13 @@ function seedReferenceData(db) {
 }
 function seedInitialAccounts(db, now) {
   const enterprisePlan = db.prepare("SELECT id FROM subscription_plans WHERE code = 'enterprise'").get();
-  const adminId = import_node_crypto2.default.randomUUID();
+  const adminId = crypto2.randomUUID();
   db.prepare(`
     INSERT INTO users (id, auth_provider, email, password_hash, full_name, role_slug, email_verified, status, timezone, preferred_language, created_at, updated_at)
     VALUES (?, 'password', 'livingstoneedu64@gmail.com', ?, 'Livingstone Edu', 'super_admin', 1, 'active', 'UTC', 'en', ?, ?)
   `).run(adminId, hashPassword("Admin@LivingTech2026"), now, now);
-  const adminOrgId = import_node_crypto2.default.randomUUID();
-  const adminWsId = import_node_crypto2.default.randomUUID();
+  const adminOrgId = crypto2.randomUUID();
+  const adminWsId = crypto2.randomUUID();
   db.prepare(`
     INSERT INTO organisations (id, owner_user_id, name, slug, billing_email, created_at, updated_at)
     VALUES (?, ?, 'LivingTech Brand Agency HQ', 'livingtech-hq', 'livingstoneedu64@gmail.com', ?, ?)
@@ -4020,20 +3984,20 @@ function seedInitialAccounts(db, now) {
       'International brand strategy, digital identity, and automated multi-channel social media growth agency.',
       'Digital Marketing & Brand Agency', 'Enterprise founders, CMOs, and high-growth B2B technology companies',
       'Executive, forward-looking, and authoritative', 'en', 'UTC', ?, ?)
-  `).run(import_node_crypto2.default.randomUUID(), adminWsId, now, now);
+  `).run(crypto2.randomUUID(), adminWsId, now, now);
   db.prepare(`
     INSERT INTO workspace_members (id, workspace_id, user_id, invited_email, role_slug, status, invited_by, created_at, updated_at)
     VALUES (?, ?, ?, 'livingstoneedu64@gmail.com', 'workspace_admin', 'active', ?, ?, ?)
-  `).run(import_node_crypto2.default.randomUUID(), adminWsId, adminId, adminId, now, now);
+  `).run(crypto2.randomUUID(), adminWsId, adminId, adminId, now, now);
   const periodEnd = new Date(Date.now() + 365 * 86400 * 1e3).toISOString();
   db.prepare(`
     INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
     VALUES (?, ?, ?, ?, 'active', 'annual', ?, ?, ?, ?)
-  `).run(import_node_crypto2.default.randomUUID(), adminOrgId, adminWsId, enterprisePlan.id, now, periodEnd, now, now);
+  `).run(crypto2.randomUUID(), adminOrgId, adminWsId, enterprisePlan.id, now, periodEnd, now, now);
   db.prepare(`
     INSERT INTO audit_logs (id, actor_user_id, actor_email, workspace_id, action, resource_type, resource_id, metadata_json, created_at, updated_at)
     VALUES (?, ?, 'livingstoneedu64@gmail.com', ?, 'system.bootstrap', 'database', 'production', '{"cleanSlate":true}', ?, ?)
-  `).run(import_node_crypto2.default.randomUUID(), adminId, adminWsId, now, now);
+  `).run(crypto2.randomUUID(), adminId, adminWsId, now, now);
   logger.info("Initialized clean LIVINGTECH BRAND AGENCY super-admin workspace (zero demo data)");
 }
 var singletonDb = null;
@@ -4045,28 +4009,28 @@ function getDb() {
 }
 
 // server/app.ts
-var import_express3 = __toESM(require("express"), 1);
-var import_cookie_parser = __toESM(require("cookie-parser"), 1);
+import express from "express";
+import cookieParser from "cookie-parser";
 
 // server/routes/api.ts
-var import_express = require("express");
-var import_node_crypto7 = __toESM(require("node:crypto"), 1);
-var import_zod2 = require("zod");
+import { Router } from "express";
+import crypto7 from "node:crypto";
+import { z as z2 } from "zod";
 
 // server/services/authService.ts
-var import_node_crypto3 = __toESM(require("node:crypto"), 1);
+import crypto3 from "node:crypto";
 var SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1e3;
 var SESSION_RENEW_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1e3;
 function hashSessionToken(token) {
-  return import_node_crypto3.default.createHmac("sha256", env.SESSION_SECRET).update(token).digest("hex");
+  return crypto3.createHmac("sha256", env.SESSION_SECRET).update(token).digest("hex");
 }
 function passwordFingerprint(passwordHash) {
   const raw = typeof passwordHash === "string" ? passwordHash : "";
-  return import_node_crypto3.default.createHash("sha256").update(raw).digest("hex").slice(0, 16);
+  return crypto3.createHash("sha256").update(raw).digest("hex").slice(0, 16);
 }
 function signSessionToken(payload) {
   const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
-  const sig = import_node_crypto3.default.createHmac("sha256", env.SESSION_SECRET).update(encoded).digest("base64url");
+  const sig = crypto3.createHmac("sha256", env.SESSION_SECRET).update(encoded).digest("base64url");
   return `lt1.${encoded}.${sig}`;
 }
 function verifySignedSessionToken(rawToken) {
@@ -4075,10 +4039,10 @@ function verifySignedSessionToken(rawToken) {
   if (parts.length !== 3) return null;
   const [, encoded, providedSig] = parts;
   if (!encoded || !providedSig) return null;
-  const expectedSig = import_node_crypto3.default.createHmac("sha256", env.SESSION_SECRET).update(encoded).digest("base64url");
+  const expectedSig = crypto3.createHmac("sha256", env.SESSION_SECRET).update(encoded).digest("base64url");
   const a = Buffer.from(providedSig, "utf8");
   const b = Buffer.from(expectedSig, "utf8");
-  if (a.length !== b.length || !import_node_crypto3.default.timingSafeEqual(a, b)) return null;
+  if (a.length !== b.length || !crypto3.timingSafeEqual(a, b)) return null;
   try {
     const parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
     if (typeof parsed.sid === "string" && typeof parsed.uid === "string" && typeof parsed.email === "string" && typeof parsed.pfp === "string" && typeof parsed.exp === "number" && parsed.exp > Date.now()) {
@@ -4188,7 +4152,7 @@ function listUserWorkspaces(db, userId) {
 }
 function createSession(db, userId) {
   const userRow = db.prepare("SELECT email, password_hash FROM users WHERE id = ?").get(userId);
-  const sessionId = import_node_crypto3.default.randomUUID();
+  const sessionId = crypto3.randomUUID();
   const nowMs = Date.now();
   const now = new Date(nowMs).toISOString();
   const expMs = nowMs + SESSION_TTL_MS;
@@ -4199,7 +4163,7 @@ function createSession(db, userId) {
     email: userRow.email,
     pfp: passwordFingerprint(userRow.password_hash),
     exp: expMs
-  }) : import_node_crypto3.default.randomBytes(32).toString("base64url");
+  }) : crypto3.randomBytes(32).toString("base64url");
   const tokenHash = hashSessionToken(rawToken);
   db.prepare(`
     INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at)
@@ -4257,7 +4221,7 @@ function recordAuditLog(db, params) {
     INSERT INTO audit_logs (id, actor_user_id, actor_email, workspace_id, action, resource_type, resource_id, metadata_json, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    import_node_crypto3.default.randomUUID(),
+    crypto3.randomUUID(),
     params.actorUserId ?? null,
     params.actorEmail ?? null,
     params.workspaceId ?? null,
@@ -4284,14 +4248,14 @@ function registerUserWithWorkspace(db, input) {
     throw new Error("An account with this email already exists.");
   }
   const now = (/* @__PURE__ */ new Date()).toISOString();
-  const userId = import_node_crypto3.default.randomUUID();
-  const orgId = import_node_crypto3.default.randomUUID();
-  const wsId = import_node_crypto3.default.randomUUID();
+  const userId = crypto3.randomUUID();
+  const orgId = crypto3.randomUUID();
+  const wsId = crypto3.randomUUID();
   const wsName = (input.workspaceName || `${input.fullName.split(" ")[0]}'s Brand Workspace`).trim();
   const slugBase = slugifyWorkspaceName(wsName);
-  const uniqueSlug = `${slugBase}-${import_node_crypto3.default.randomBytes(3).toString("hex")}`;
+  const uniqueSlug = `${slugBase}-${crypto3.randomBytes(3).toString("hex")}`;
   const initialCredits = 0;
-  const verifyToken = import_node_crypto3.default.randomBytes(20).toString("hex");
+  const verifyToken = crypto3.randomBytes(20).toString("hex");
   const tx = db.transaction(() => {
     db.prepare(`
       INSERT INTO users (id, auth_provider, email, password_hash, full_name, role_slug, email_verified, status, timezone, preferred_language, created_at, updated_at)
@@ -4310,20 +4274,20 @@ function registerUserWithWorkspace(db, input) {
         id, workspace_id, brand_name, logo_url, primary_color, secondary_color, accent_color,
         business_description, industry, target_audience, tone_of_voice, preferred_language, timezone, created_at, updated_at
       ) VALUES (?, ?, ?, '', '#0052FF', '#071436', '#F59E0B', '', ?, '', 'Professional & Modern', 'en', 'UTC', ?, ?)
-    `).run(import_node_crypto3.default.randomUUID(), wsId, wsName, input.industry || "", now, now);
+    `).run(crypto3.randomUUID(), wsId, wsName, input.industry || "", now, now);
     db.prepare(`
       INSERT INTO workspace_members (id, workspace_id, user_id, invited_email, role_slug, status, invited_by, created_at, updated_at)
       VALUES (?, ?, ?, ?, 'workspace_admin', 'active', ?, ?, ?)
-    `).run(import_node_crypto3.default.randomUUID(), wsId, userId, email, userId, now, now);
+    `).run(crypto3.randomUUID(), wsId, userId, email, userId, now, now);
     db.prepare(`
       INSERT INTO notifications (id, workspace_id, user_id, category, title, body, is_read, created_at, updated_at)
       VALUES (?, ?, ?, 'billing', 'Select Your Subscription Plan', 'Your workspace is ready. Visit Billing & Subscriptions to choose Basic, Pro, or Enterprise and unlock your package modules.', 0, ?, ?)
-    `).run(import_node_crypto3.default.randomUUID(), wsId, userId, now, now);
+    `).run(crypto3.randomUUID(), wsId, userId, now, now);
     const verifyExpires = new Date(Date.now() + 24 * 3600 * 1e3).toISOString();
     db.prepare(`
       INSERT INTO auth_tokens (id, user_id, token_type, token_value, expires_at, created_at)
       VALUES (?, ?, 'email_verify', ?, ?, ?)
-    `).run(import_node_crypto3.default.randomUUID(), userId, verifyToken, verifyExpires, now);
+    `).run(crypto3.randomUUID(), userId, verifyToken, verifyExpires, now);
     recordAuditLog(db, {
       actorUserId: userId,
       actorEmail: email,
@@ -4379,12 +4343,12 @@ function syncFirebaseGoogleUser(db, input) {
   const now = (/* @__PURE__ */ new Date()).toISOString();
   let row = db.prepare("SELECT * FROM users WHERE external_uid = ? OR email = ?").get(input.externalUid, email);
   if (!row) {
-    const userId = import_node_crypto3.default.randomUUID();
-    const orgId = import_node_crypto3.default.randomUUID();
-    const wsId = import_node_crypto3.default.randomUUID();
+    const userId = crypto3.randomUUID();
+    const orgId = crypto3.randomUUID();
+    const wsId = crypto3.randomUUID();
     const role = email === "livingstoneedu64@gmail.com" ? "super_admin" : "customer";
     const wsName = `${input.fullName.split(" ")[0]}'s Agency Workspace`;
-    const uniqueSlug = `${slugifyWorkspaceName(wsName)}-${import_node_crypto3.default.randomBytes(3).toString("hex")}`;
+    const uniqueSlug = `${slugifyWorkspaceName(wsName)}-${crypto3.randomBytes(3).toString("hex")}`;
     const enterprisePlan = role === "super_admin" ? db.prepare("SELECT id FROM subscription_plans WHERE code = 'enterprise'").get() : void 0;
     const periodEnd = new Date(Date.now() + 365 * 86400 * 1e3).toISOString();
     db.transaction(() => {
@@ -4405,16 +4369,16 @@ function syncFirebaseGoogleUser(db, input) {
           id, workspace_id, brand_name, logo_url, primary_color, secondary_color, accent_color,
           business_description, industry, target_audience, tone_of_voice, preferred_language, timezone, created_at, updated_at
         ) VALUES (?, ?, ?, '', '#0052FF', '#071436', '#F59E0B', '', '', '', 'Executive & Authoritative', 'en', 'UTC', ?, ?)
-      `).run(import_node_crypto3.default.randomUUID(), wsId, wsName, now, now);
+      `).run(crypto3.randomUUID(), wsId, wsName, now, now);
       db.prepare(`
         INSERT INTO workspace_members (id, workspace_id, user_id, invited_email, role_slug, status, invited_by, created_at, updated_at)
         VALUES (?, ?, ?, ?, 'workspace_admin', 'active', ?, ?, ?)
-      `).run(import_node_crypto3.default.randomUUID(), wsId, userId, email, userId, now, now);
+      `).run(crypto3.randomUUID(), wsId, userId, email, userId, now, now);
       if (enterprisePlan) {
         db.prepare(`
           INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
           VALUES (?, ?, ?, ?, 'active', 'annual', ?, ?, ?, ?)
-        `).run(import_node_crypto3.default.randomUUID(), orgId, wsId, enterprisePlan.id, now, periodEnd, now, now);
+        `).run(crypto3.randomUUID(), orgId, wsId, enterprisePlan.id, now, periodEnd, now, now);
       }
     })();
     row = db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
@@ -4453,13 +4417,13 @@ function createPasswordResetToken(db, emailInput) {
   if (!user) {
     return {};
   }
-  const resetToken = import_node_crypto3.default.randomBytes(20).toString("hex");
+  const resetToken = crypto3.randomBytes(20).toString("hex");
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const expiresAt = new Date(Date.now() + 3600 * 1e3).toISOString();
   db.prepare(`
     INSERT INTO auth_tokens (id, user_id, token_type, token_value, expires_at, created_at)
     VALUES (?, ?, 'password_reset', ?, ?, ?)
-  `).run(import_node_crypto3.default.randomUUID(), user.id, resetToken, expiresAt, now);
+  `).run(crypto3.randomUUID(), user.id, resetToken, expiresAt, now);
   recordAuditLog(db, {
     actorUserId: user.id,
     actorEmail: user.email,
@@ -4757,12 +4721,12 @@ function createWorkspaceFeatureGuard(db, feature) {
 }
 
 // server/services/aiService.ts
-var import_genai2 = require("@google/genai");
-var import_node_crypto5 = __toESM(require("node:crypto"), 1);
+import { GoogleGenAI as GoogleGenAI2, Type } from "@google/genai";
+import crypto5 from "node:crypto";
 
 // server/ai/geminiClient.ts
-var import_genai = require("@google/genai");
-var import_node_crypto4 = __toESM(require("node:crypto"), 1);
+import { GoogleGenAI } from "@google/genai";
+import crypto4 from "node:crypto";
 var GEMINI_PRIMARY_MODEL = "gemini-3.5-flash-lite";
 var GEMINI_FALLBACK_MODELS = ["gemini-3.1-flash-lite"];
 var testTransportOverride = null;
@@ -4770,7 +4734,7 @@ function createGeminiSdkClient() {
   if (!env.GEMINI_API_KEY) {
     throw new Error("GEMINI_API_KEY is not configured on the server. Add it in Settings > Secrets to enable AI generation.");
   }
-  return new import_genai.GoogleGenAI({
+  return new GoogleGenAI({
     apiKey: env.GEMINI_API_KEY,
     httpOptions: {
       headers: {
@@ -4937,7 +4901,7 @@ async function runStructuredGeminiModule(db, params) {
             prompt_tokens, completion_tokens, status, error_message, latency_ms, created_at
           ) VALUES (?, ?, ?, ?, ?, 0, 0, 0, 'failed', ?, ?, ?)`
         ).run(
-          import_node_crypto4.default.randomUUID(),
+          crypto4.randomUUID(),
           params.workspaceId,
           params.userId,
           params.moduleKey,
@@ -4972,7 +4936,7 @@ async function runStructuredGeminiModule(db, params) {
         prompt_tokens, completion_tokens, status, error_message, latency_ms, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', NULL, ?, ?)`
     ).run(
-      import_node_crypto4.default.randomUUID(),
+      crypto4.randomUUID(),
       params.workspaceId,
       params.userId,
       params.moduleKey,
@@ -4989,7 +4953,7 @@ async function runStructuredGeminiModule(db, params) {
         prompt_tokens, completion_tokens, status, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?)`
     ).run(
-      import_node_crypto4.default.randomUUID(),
+      crypto4.randomUUID(),
       params.workspaceId,
       params.userId,
       legacyFeature,
@@ -5019,7 +4983,7 @@ function getGeminiClient() {
   if (!env.GEMINI_API_KEY) {
     throw new Error("GEMINI_API_KEY is not configured on the server. Add it in Settings > Secrets to enable AI generation.");
   }
-  return new import_genai2.GoogleGenAI({
+  return new GoogleGenAI2({
     apiKey: env.GEMINI_API_KEY,
     httpOptions: {
       headers: {
@@ -5130,21 +5094,21 @@ Return a structured JSON payload containing:
       systemInstruction: "You are an international enterprise brand strategist and senior social media copywriter. Produce authentic, conversion-focused copy without clich\xE9s or generic filler.",
       responseMimeType: "application/json",
       responseSchema: {
-        type: import_genai2.Type.OBJECT,
+        type: Type.OBJECT,
         properties: {
-          title: { type: import_genai2.Type.STRING },
-          headlines: { type: import_genai2.Type.ARRAY, items: { type: import_genai2.Type.STRING } },
-          caption: { type: import_genai2.Type.STRING },
-          hashtags: { type: import_genai2.Type.ARRAY, items: { type: import_genai2.Type.STRING } },
-          callToAction: { type: import_genai2.Type.STRING },
-          bestTimeNote: { type: import_genai2.Type.STRING },
+          title: { type: Type.STRING },
+          headlines: { type: Type.ARRAY, items: { type: Type.STRING } },
+          caption: { type: Type.STRING },
+          hashtags: { type: Type.ARRAY, items: { type: Type.STRING } },
+          callToAction: { type: Type.STRING },
+          bestTimeNote: { type: Type.STRING },
           variants: {
-            type: import_genai2.Type.ARRAY,
+            type: Type.ARRAY,
             items: {
-              type: import_genai2.Type.OBJECT,
+              type: Type.OBJECT,
               properties: {
-                label: { type: import_genai2.Type.STRING },
-                body: { type: import_genai2.Type.STRING }
+                label: { type: Type.STRING },
+                body: { type: Type.STRING }
               },
               required: ["label", "body"]
             }
@@ -5161,14 +5125,14 @@ Return a structured JSON payload containing:
     const cleanHashtags = normalizeHashtags(parsed.hashtags || []);
     const cleanVariants = Array.isArray(parsed.variants) ? parsed.variants.slice(0, 4) : [];
     const usage = response.usageMetadata;
-    const suggestionId = import_node_crypto5.default.randomUUID();
+    const suggestionId = crypto5.randomUUID();
     db.transaction(() => {
       db.prepare("UPDATE workspaces SET ai_credits_balance = ai_credits_balance - ?, updated_at = ? WHERE id = ?").run(cost, now, params.workspaceId);
       db.prepare(`
         INSERT INTO ai_usage (id, workspace_id, user_id, feature, model_name, credits_used, prompt_tokens, completion_tokens, status, created_at, updated_at)
         VALUES (?, ?, ?, 'content_studio', ?, ?, ?, ?, 'completed', ?, ?)
       `).run(
-        import_node_crypto5.default.randomUUID(),
+        crypto5.randomUUID(),
         params.workspaceId,
         params.userId,
         modelUsed,
@@ -5222,7 +5186,7 @@ Return a structured JSON payload containing:
     db.prepare(`
       INSERT INTO ai_usage (id, workspace_id, user_id, feature, model_name, credits_used, prompt_tokens, completion_tokens, status, created_at, updated_at)
       VALUES (?, ?, ?, 'content_studio', ?, 0, 0, 0, 'failed', ?, ?)
-    `).run(import_node_crypto5.default.randomUUID(), params.workspaceId, params.userId, PRIMARY_MODEL, now, now);
+    `).run(crypto5.randomUUID(), params.workspaceId, params.userId, PRIMARY_MODEL, now, now);
     throw formatGeminiError(err);
   }
 }
@@ -5286,36 +5250,36 @@ Target Platforms: ${params.platforms.join(", ")}${socialContextBlock}`;
     systemInstruction: "You are a Chief Brand Strategist creating an executive, measurable social media growth roadmap.",
     responseMimeType: "application/json",
     responseSchema: {
-      type: import_genai2.Type.OBJECT,
+      type: Type.OBJECT,
       properties: {
-        executiveSummary: { type: import_genai2.Type.STRING },
+        executiveSummary: { type: Type.STRING },
         pillars: {
-          type: import_genai2.Type.ARRAY,
+          type: Type.ARRAY,
           items: {
-            type: import_genai2.Type.OBJECT,
+            type: Type.OBJECT,
             properties: {
-              name: { type: import_genai2.Type.STRING },
-              sharePercent: { type: import_genai2.Type.INTEGER },
-              objective: { type: import_genai2.Type.STRING },
-              sampleHooks: { type: import_genai2.Type.ARRAY, items: { type: import_genai2.Type.STRING } }
+              name: { type: Type.STRING },
+              sharePercent: { type: Type.INTEGER },
+              objective: { type: Type.STRING },
+              sampleHooks: { type: Type.ARRAY, items: { type: Type.STRING } }
             },
             required: ["name", "sharePercent", "objective", "sampleHooks"]
           }
         },
         weeklyCadence: {
-          type: import_genai2.Type.ARRAY,
+          type: Type.ARRAY,
           items: {
-            type: import_genai2.Type.OBJECT,
+            type: Type.OBJECT,
             properties: {
-              day: { type: import_genai2.Type.STRING },
-              platform: { type: import_genai2.Type.STRING },
-              format: { type: import_genai2.Type.STRING },
-              focus: { type: import_genai2.Type.STRING }
+              day: { type: Type.STRING },
+              platform: { type: Type.STRING },
+              format: { type: Type.STRING },
+              focus: { type: Type.STRING }
             },
             required: ["day", "platform", "format", "focus"]
           }
         },
-        kpis: { type: import_genai2.Type.ARRAY, items: { type: import_genai2.Type.STRING } }
+        kpis: { type: Type.ARRAY, items: { type: Type.STRING } }
       },
       required: ["executiveSummary", "pillars", "weeklyCadence", "kpis"]
     }
@@ -5328,7 +5292,7 @@ Target Platforms: ${params.platforms.join(", ")}${socialContextBlock}`;
       INSERT INTO ai_usage (id, workspace_id, user_id, feature, model_name, credits_used, prompt_tokens, completion_tokens, status, created_at, updated_at)
       VALUES (?, ?, ?, 'content_strategy', ?, ?, ?, ?, 'completed', ?, ?)
     `).run(
-      import_node_crypto5.default.randomUUID(),
+      crypto5.randomUUID(),
       params.workspaceId,
       params.userId,
       modelUsed,
@@ -5347,17 +5311,17 @@ Target Platforms: ${params.platforms.join(", ")}${socialContextBlock}`;
 }
 
 // server/services/oauthService.ts
-var import_node_crypto6 = __toESM(require("node:crypto"), 1);
+import crypto6 from "node:crypto";
 var memoryOAuthStates = /* @__PURE__ */ new Map();
 function generatePkcePair() {
-  const codeVerifier = import_node_crypto6.default.randomBytes(32).toString("base64url");
-  const codeChallenge = import_node_crypto6.default.createHash("sha256").update(codeVerifier).digest("base64url");
+  const codeVerifier = crypto6.randomBytes(32).toString("base64url");
+  const codeChallenge = crypto6.createHash("sha256").update(codeVerifier).digest("base64url");
   return { codeVerifier, codeChallenge };
 }
 function encryptSocialToken(plaintext) {
-  const key = import_node_crypto6.default.createHash("sha256").update(env.TOKEN_ENCRYPTION_KEY).digest();
-  const iv = import_node_crypto6.default.randomBytes(12);
-  const cipher = import_node_crypto6.default.createCipheriv("aes-256-gcm", key, iv);
+  const key = crypto6.createHash("sha256").update(env.TOKEN_ENCRYPTION_KEY).digest();
+  const iv = crypto6.randomBytes(12);
+  const cipher = crypto6.createCipheriv("aes-256-gcm", key, iv);
   const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
   return `${iv.toString("hex")}:${tag.toString("hex")}:${encrypted.toString("hex")}`;
@@ -5368,8 +5332,8 @@ function decryptSocialToken(ciphertext) {
     throw new Error("Malformed encrypted token payload.");
   }
   const [ivHex, tagHex, encHex] = parts;
-  const key = import_node_crypto6.default.createHash("sha256").update(env.TOKEN_ENCRYPTION_KEY).digest();
-  const decipher = import_node_crypto6.default.createDecipheriv("aes-256-gcm", key, Buffer.from(ivHex, "hex"));
+  const key = crypto6.createHash("sha256").update(env.TOKEN_ENCRYPTION_KEY).digest();
+  const decipher = crypto6.createDecipheriv("aes-256-gcm", key, Buffer.from(ivHex, "hex"));
   decipher.setAuthTag(Buffer.from(tagHex, "hex"));
   const decrypted = Buffer.concat([decipher.update(Buffer.from(encHex, "hex")), decipher.final()]);
   return decrypted.toString("utf8");
@@ -5432,7 +5396,7 @@ function recordOAuthConnectionLog(db, params) {
       event_type, status, message, error_code, metadata_json, created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    import_node_crypto6.default.randomUUID(),
+    crypto6.randomUUID(),
     params.workspaceId ?? null,
     params.userId ?? null,
     params.platformKey,
@@ -5563,7 +5527,7 @@ function buildOfficialOAuthUrl(db, params) {
       requestedPermissions
     };
   }
-  const state = import_node_crypto6.default.randomBytes(24).toString("hex");
+  const state = crypto6.randomBytes(24).toString("hex");
   const pkce = provider.supportsPkce ? generatePkcePair() : void 0;
   const expiresAtMs = Date.now() + 15 * 60 * 1e3;
   const now = (/* @__PURE__ */ new Date()).toISOString();
@@ -5800,7 +5764,7 @@ async function handleOAuthCallbackForDiscovery(db, params) {
     } else {
       discoveredAccounts = (await provider.discoverAccounts(tokenBundle.accessToken)).accounts;
     }
-    const discoverySessionId = import_node_crypto6.default.randomUUID();
+    const discoverySessionId = crypto6.randomUUID();
     const selectionExpiry = new Date(Date.now() + 15 * 60 * 1e3).toISOString();
     const encryptedPendingTokens = encryptSocialToken(
       JSON.stringify({
@@ -6000,7 +5964,7 @@ function connectSelectedDiscoveredAccounts(db, params) {
             title, caption, hashtags_json, campaign_tag, status, published_at, created_at, updated_at
           ) VALUES (?, ?, ?, ?, ?, ?, '[]', 'synced_profile_context', 'published', ?, ?, ?)
         `).run(
-          import_node_crypto6.default.randomUUID(),
+          crypto6.randomUUID(),
           params.workspaceId,
           params.userId,
           platformKey,
@@ -6025,7 +5989,7 @@ function connectSelectedDiscoveredAccounts(db, params) {
             impressions, engagements, clicks, followers_total, is_demo, created_at, updated_at
           ) VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?, 0, ?, ?)
         `).run(
-          import_node_crypto6.default.randomUUID(),
+          crypto6.randomUUID(),
           params.workspaceId,
           saved.accountId,
           platformKey,
@@ -6074,7 +6038,7 @@ function persistOAuthSocialAccount(db, params) {
   const encryptedAccess = encryptSocialToken(params.tokens.accessToken);
   const encryptedRefresh = params.tokens.refreshToken ? encryptSocialToken(params.tokens.refreshToken) : null;
   const existing = db.prepare("SELECT id FROM social_accounts WHERE workspace_id = ? AND platform_id = ? AND external_account_id = ?").get(params.workspaceId, platformRow.id, params.identity.externalAccountId);
-  const accountId = existing?.id || import_node_crypto6.default.randomUUID();
+  const accountId = existing?.id || crypto6.randomUUID();
   db.transaction(() => {
     if (existing) {
       db.prepare(`
@@ -6159,7 +6123,7 @@ function persistOAuthSocialAccount(db, params) {
           expires_at, refresh_expires_at, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        import_node_crypto6.default.randomUUID(),
+        crypto6.randomUUID(),
         accountId,
         params.workspaceId,
         params.userId,
@@ -6202,7 +6166,7 @@ function persistOAuthSocialAccount(db, params) {
       INSERT INTO notifications (id, workspace_id, user_id, category, title, body, is_read, created_at, updated_at)
       VALUES (?, ?, ?, 'publishing', ?, ?, 0, ?, ?)
     `).run(
-      import_node_crypto6.default.randomUUID(),
+      crypto6.randomUUID(),
       params.workspaceId,
       params.userId,
       `${platformRow.display_name} Connected`,
@@ -6394,7 +6358,7 @@ async function syncSocialAccountData(db, workspaceId, accountId, actorUserId) {
         db.prepare(`
           INSERT INTO platform_sync_logs (id, workspace_id, social_account_id, platform_key, sync_type, status, items_synced, error_message, created_at)
           VALUES (?, ?, ?, ?, 'full', 'failed', 0, ?, ?)
-        `).run(import_node_crypto6.default.randomUUID(), workspaceId, accountId, platformKey, refreshed.message, now);
+        `).run(crypto6.randomUUID(), workspaceId, accountId, platformKey, refreshed.message, now);
         return {
           status: "failed",
           itemsSynced: 0,
@@ -6478,7 +6442,7 @@ async function syncSocialAccountData(db, workspaceId, accountId, actorUserId) {
             impressions, engagements, clicks, followers_total, is_demo, created_at, updated_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
         `).run(
-          import_node_crypto6.default.randomUUID(),
+          crypto6.randomUUID(),
           workspaceId,
           accountId,
           platformKey,
@@ -6496,7 +6460,7 @@ async function syncSocialAccountData(db, workspaceId, accountId, actorUserId) {
           id, workspace_id, social_account_id, platform_key, sync_type,
           status, items_synced, rate_limit_remaining, error_message, created_at
         ) VALUES (?, ?, ?, ?, 'full', 'succeeded', ?, ?, NULL, ?)
-      `).run(import_node_crypto6.default.randomUUID(), workspaceId, accountId, platformKey, itemsSynced, synced.rateLimitRemaining, now);
+      `).run(crypto6.randomUUID(), workspaceId, accountId, platformKey, itemsSynced, synced.rateLimitRemaining, now);
       db.prepare("UPDATE social_platforms SET last_health_check_at = ?, last_api_error = NULL, updated_at = ? WHERE key = ?").run(
         now,
         now,
@@ -6534,7 +6498,7 @@ async function syncSocialAccountData(db, workspaceId, accountId, actorUserId) {
           id, workspace_id, social_account_id, platform_key, sync_type,
           status, items_synced, rate_limit_remaining, error_message, created_at
         ) VALUES (?, ?, ?, ?, 'full', ?, 0, NULL, ?, ?)
-      `).run(import_node_crypto6.default.randomUUID(), workspaceId, accountId, platformKey, syncStatus, safeMsg, now);
+      `).run(crypto6.randomUUID(), workspaceId, accountId, platformKey, syncStatus, safeMsg, now);
       db.prepare("UPDATE social_platforms SET last_health_check_at = ?, last_api_error = ?, updated_at = ? WHERE key = ?").run(
         now,
         safeMsg.slice(0, 300),
@@ -6707,7 +6671,7 @@ function listOAuthConnectionLogs(db, options) {
   }));
 }
 function recordPlatformWebhookEvent(db, params) {
-  const id = import_node_crypto6.default.randomUUID();
+  const id = crypto6.randomUUID();
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const safePayload = redactSensitiveTokens(JSON.stringify(params.payload));
   db.prepare(`
@@ -6742,7 +6706,7 @@ function parsePublishingPreferences(rawJson) {
 }
 
 // server/routes/api.ts
-var PlatformKeySchema = import_zod2.z.enum([
+var PlatformKeySchema = z2.enum([
   "facebook",
   "instagram",
   "tiktok",
@@ -6785,7 +6749,7 @@ function clearSessionCookie(req, res) {
   });
 }
 function handleRouteError(res, err, fallbackStatus = 400) {
-  if (err instanceof import_zod2.z.ZodError) {
+  if (err instanceof z2.ZodError) {
     return res.status(400).json({
       error: err.issues[0]?.message || "Invalid input parameters.",
       details: err.flatten().fieldErrors
@@ -6796,7 +6760,7 @@ function handleRouteError(res, err, fallbackStatus = 400) {
   return res.status(fallbackStatus).json({ error: message });
 }
 function createApiRouter(db) {
-  const router = (0, import_express.Router)();
+  const router = Router();
   const requireAuth = (req, res, next) => {
     const token = extractToken(req);
     if (!token) {
@@ -6838,7 +6802,12 @@ function createApiRouter(db) {
   router.use("/workspaces/:wid/media", requireAuth, requireWorkspaceMember, requireFeature("media"));
   router.use("/workspaces/:wid/members", requireAuth, requireWorkspaceMember, requireFeature("team"));
   router.get("/health", (_req, res) => {
-    res.json({ status: "ok", service: "livingtech-brand-agency-api", timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+    res.json({
+      status: "ok",
+      storage: "sql",
+      service: "livingtech-brand-agency-api",
+      timestamp: (/* @__PURE__ */ new Date()).toISOString()
+    });
   });
   router.get("/settings", (_req, res) => {
     try {
@@ -6870,12 +6839,12 @@ function createApiRouter(db) {
       }))
     );
   });
-  const RegisterSchema = import_zod2.z.object({
-    email: import_zod2.z.string().email("Enter a valid email address."),
-    password: import_zod2.z.string().min(8, "Password must be at least 8 characters."),
-    fullName: import_zod2.z.string().min(2, "Full name is required.").max(120),
-    workspaceName: import_zod2.z.string().min(2).max(120).optional(),
-    industry: import_zod2.z.string().max(100).optional()
+  const RegisterSchema = z2.object({
+    email: z2.string().email("Enter a valid email address."),
+    password: z2.string().min(8, "Password must be at least 8 characters."),
+    fullName: z2.string().min(2, "Full name is required.").max(120),
+    workspaceName: z2.string().min(2).max(120).optional(),
+    industry: z2.string().max(100).optional()
   });
   router.post("/auth/register", (req, res) => {
     try {
@@ -6887,9 +6856,9 @@ function createApiRouter(db) {
       handleRouteError(res, err, 400);
     }
   });
-  const LoginSchema = import_zod2.z.object({
-    email: import_zod2.z.string().email("Enter a valid email address."),
-    password: import_zod2.z.string().min(1, "Password is required.")
+  const LoginSchema = z2.object({
+    email: z2.string().email("Enter a valid email address."),
+    password: z2.string().min(1, "Password is required.")
   });
   router.post("/auth/login", (req, res) => {
     try {
@@ -6901,12 +6870,12 @@ function createApiRouter(db) {
       handleRouteError(res, err, 401);
     }
   });
-  const GoogleSyncSchema = import_zod2.z.object({
-    externalUid: import_zod2.z.string().min(1).max(128),
-    email: import_zod2.z.string().email(),
-    fullName: import_zod2.z.string().min(1).max(120),
-    avatarUrl: import_zod2.z.string().nullable().optional(),
-    emailVerified: import_zod2.z.boolean().default(true)
+  const GoogleSyncSchema = z2.object({
+    externalUid: z2.string().min(1).max(128),
+    email: z2.string().email(),
+    fullName: z2.string().min(1).max(120),
+    avatarUrl: z2.string().nullable().optional(),
+    emailVerified: z2.boolean().default(true)
   });
   router.post("/auth/google-sync", (req, res) => {
     try {
@@ -6931,7 +6900,7 @@ function createApiRouter(db) {
   });
   router.post("/auth/forgot-password", (req, res) => {
     try {
-      const { email } = import_zod2.z.object({ email: import_zod2.z.string().email() }).parse(req.body);
+      const { email } = z2.object({ email: z2.string().email() }).parse(req.body);
       const result = createPasswordResetToken(db, email);
       res.json({
         message: "If an account matches that email, a password reset link and recovery token have been issued.",
@@ -6944,9 +6913,9 @@ function createApiRouter(db) {
   });
   router.post("/auth/reset-password", (req, res) => {
     try {
-      const { token, newPassword } = import_zod2.z.object({
-        token: import_zod2.z.string().min(10, "Reset token is required."),
-        newPassword: import_zod2.z.string().min(8)
+      const { token, newPassword } = z2.object({
+        token: z2.string().min(10, "Reset token is required."),
+        newPassword: z2.string().min(8)
       }).parse(req.body);
       confirmPasswordReset(db, token, newPassword);
       res.json({ message: "Password updated successfully. You may now sign in." });
@@ -6956,7 +6925,7 @@ function createApiRouter(db) {
   });
   router.post("/auth/verify-email", (req, res) => {
     try {
-      const { token } = import_zod2.z.object({ token: import_zod2.z.string().min(10) }).parse(req.body);
+      const { token } = z2.object({ token: z2.string().min(10) }).parse(req.body);
       verifyEmailWithToken(db, token);
       res.json({ message: "Email address verified successfully." });
     } catch (err) {
@@ -6965,12 +6934,12 @@ function createApiRouter(db) {
   });
   router.post("/auth/resend-verification", requireAuth, (req, res) => {
     const now = (/* @__PURE__ */ new Date()).toISOString();
-    const token = import_node_crypto7.default.randomBytes(20).toString("hex");
+    const token = crypto7.randomBytes(20).toString("hex");
     const expires = new Date(Date.now() + 24 * 3600 * 1e3).toISOString();
     db.prepare(`
       INSERT INTO auth_tokens (id, user_id, token_type, token_value, expires_at, created_at)
       VALUES (?, ?, 'email_verify', ?, ?, ?)
-    `).run(import_node_crypto7.default.randomUUID(), req.user.id, token, expires, now);
+    `).run(crypto7.randomUUID(), req.user.id, token, expires, now);
     res.json({
       message: "Verification token issued.",
       ...process.env.NODE_ENV !== "production" ? { previewVerificationToken: token } : {}
@@ -6978,9 +6947,9 @@ function createApiRouter(db) {
   });
   router.post("/auth/recover-account", (req, res) => {
     try {
-      const { email, reason } = import_zod2.z.object({
-        email: import_zod2.z.string().email(),
-        reason: import_zod2.z.string().min(5).max(500)
+      const { email, reason } = z2.object({
+        email: z2.string().email(),
+        reason: z2.string().min(5).max(500)
       }).parse(req.body);
       const normalized = email.trim().toLowerCase();
       const user = db.prepare("SELECT id, status FROM users WHERE email = ?").get(normalized);
@@ -7003,11 +6972,11 @@ function createApiRouter(db) {
   });
   router.patch("/profile", requireAuth, (req, res) => {
     try {
-      const payload = import_zod2.z.object({
-        fullName: import_zod2.z.string().min(2).max(120),
-        timezone: import_zod2.z.string().min(2).max(64),
-        preferredLanguage: import_zod2.z.string().min(2).max(16),
-        avatarUrl: import_zod2.z.string().url().or(import_zod2.z.string().startsWith("data:image/")).nullable().optional()
+      const payload = z2.object({
+        fullName: z2.string().min(2).max(120),
+        timezone: z2.string().min(2).max(64),
+        preferredLanguage: z2.string().min(2).max(16),
+        avatarUrl: z2.string().url().or(z2.string().startsWith("data:image/")).nullable().optional()
       }).parse(req.body);
       const now = (/* @__PURE__ */ new Date()).toISOString();
       if (payload.avatarUrl !== void 0) {
@@ -7036,9 +7005,9 @@ function createApiRouter(db) {
   });
   router.post("/profile/change-password", requireAuth, (req, res) => {
     try {
-      const payload = import_zod2.z.object({
-        currentPassword: import_zod2.z.string().min(1),
-        newPassword: import_zod2.z.string().min(8)
+      const payload = z2.object({
+        currentPassword: z2.string().min(1),
+        newPassword: z2.string().min(8)
       }).parse(req.body);
       const strength = validatePasswordStrength(payload.newPassword);
       if (!strength.valid) throw new Error(strength.reason);
@@ -7056,7 +7025,7 @@ function createApiRouter(db) {
   });
   router.delete("/profile/account", requireAuth, (req, res) => {
     try {
-      const { confirmEmail } = import_zod2.z.object({ confirmEmail: import_zod2.z.string().email() }).parse(req.body);
+      const { confirmEmail } = z2.object({ confirmEmail: z2.string().email() }).parse(req.body);
       if (confirmEmail.trim().toLowerCase() !== req.user.email.toLowerCase()) {
         return res.status(400).json({ error: "Confirmation email does not match your account email." });
       }
@@ -7083,31 +7052,31 @@ function createApiRouter(db) {
   });
   router.post("/workspaces", requireAuth, (req, res) => {
     try {
-      const payload = import_zod2.z.object({
-        name: import_zod2.z.string().min(2).max(120),
-        brandName: import_zod2.z.string().min(2).max(120),
-        industry: import_zod2.z.string().max(100).optional().default(""),
-        businessDescription: import_zod2.z.string().max(2e3).optional().default(""),
-        targetAudience: import_zod2.z.string().max(500).optional().default(""),
-        primaryColor: import_zod2.z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().default("#0052FF"),
-        secondaryColor: import_zod2.z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().default("#071436"),
-        accentColor: import_zod2.z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().default("#F59E0B"),
-        preferredLanguage: import_zod2.z.string().max(16).optional().default("en"),
-        timezone: import_zod2.z.string().max(64).optional().default("UTC"),
-        logoUrl: import_zod2.z.string().max(512).optional().default("")
+      const payload = z2.object({
+        name: z2.string().min(2).max(120),
+        brandName: z2.string().min(2).max(120),
+        industry: z2.string().max(100).optional().default(""),
+        businessDescription: z2.string().max(2e3).optional().default(""),
+        targetAudience: z2.string().max(500).optional().default(""),
+        primaryColor: z2.string().regex(/^#[0-9a-fA-F]{6}$/).optional().default("#0052FF"),
+        secondaryColor: z2.string().regex(/^#[0-9a-fA-F]{6}$/).optional().default("#071436"),
+        accentColor: z2.string().regex(/^#[0-9a-fA-F]{6}$/).optional().default("#F59E0B"),
+        preferredLanguage: z2.string().max(16).optional().default("en"),
+        timezone: z2.string().max(64).optional().default("UTC"),
+        logoUrl: z2.string().max(512).optional().default("")
       }).parse(req.body);
       const now = (/* @__PURE__ */ new Date()).toISOString();
       let org = db.prepare("SELECT id FROM organisations WHERE owner_user_id = ? LIMIT 1").get(req.user.id);
       if (!org) {
-        const orgId = import_node_crypto7.default.randomUUID();
+        const orgId = crypto7.randomUUID();
         db.prepare(`
           INSERT INTO organisations (id, owner_user_id, name, slug, billing_email, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(orgId, req.user.id, payload.name, `${slugifyWorkspaceName(payload.name)}-${import_node_crypto7.default.randomBytes(3).toString("hex")}`, req.user.email, now, now);
+        `).run(orgId, req.user.id, payload.name, `${slugifyWorkspaceName(payload.name)}-${crypto7.randomBytes(3).toString("hex")}`, req.user.email, now, now);
         org = { id: orgId };
       }
-      const wsId = import_node_crypto7.default.randomUUID();
-      const slug = `${slugifyWorkspaceName(payload.name)}-${import_node_crypto7.default.randomBytes(3).toString("hex")}`;
+      const wsId = crypto7.randomUUID();
+      const slug = `${slugifyWorkspaceName(payload.name)}-${crypto7.randomBytes(3).toString("hex")}`;
       const starterPlan = db.prepare("SELECT id FROM subscription_plans WHERE code = 'basic'").get();
       const periodEnd = new Date(Date.now() + 30 * 86400 * 1e3).toISOString();
       db.transaction(() => {
@@ -7121,7 +7090,7 @@ function createApiRouter(db) {
             business_description, industry, target_audience, tone_of_voice, preferred_language, timezone, created_at, updated_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Executive & Authoritative', ?, ?, ?, ?)
         `).run(
-          import_node_crypto7.default.randomUUID(),
+          crypto7.randomUUID(),
           wsId,
           payload.brandName.trim(),
           payload.logoUrl,
@@ -7139,11 +7108,11 @@ function createApiRouter(db) {
         db.prepare(`
           INSERT INTO workspace_members (id, workspace_id, user_id, invited_email, role_slug, status, invited_by, created_at, updated_at)
           VALUES (?, ?, ?, ?, 'workspace_admin', 'active', ?, ?, ?)
-        `).run(import_node_crypto7.default.randomUUID(), wsId, req.user.id, req.user.email, req.user.id, now, now);
+        `).run(crypto7.randomUUID(), wsId, req.user.id, req.user.email, req.user.id, now, now);
         db.prepare(`
           INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
           VALUES (?, ?, ?, ?, 'trialing', 'monthly', ?, ?, ?, ?)
-        `).run(import_node_crypto7.default.randomUUID(), org.id, wsId, starterPlan.id, now, periodEnd, now, now);
+        `).run(crypto7.randomUUID(), org.id, wsId, starterPlan.id, now, periodEnd, now, now);
         recordAuditLog(db, {
           actorUserId: req.user.id,
           actorEmail: req.user.email,
@@ -7164,19 +7133,19 @@ function createApiRouter(db) {
   router.patch("/workspaces/:wid/brand", requireAuth, requireWorkspaceMember, (req, res) => {
     try {
       const wid = String(req.params.wid);
-      const payload = import_zod2.z.object({
-        name: import_zod2.z.string().min(2).max(120),
-        brandName: import_zod2.z.string().min(2).max(120),
-        logoUrl: import_zod2.z.string().max(512).default(""),
-        primaryColor: import_zod2.z.string().regex(/^#[0-9a-fA-F]{6}$/),
-        secondaryColor: import_zod2.z.string().regex(/^#[0-9a-fA-F]{6}$/),
-        accentColor: import_zod2.z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#F59E0B"),
-        businessDescription: import_zod2.z.string().max(2e3).default(""),
-        industry: import_zod2.z.string().max(100).default(""),
-        targetAudience: import_zod2.z.string().max(500).default(""),
-        toneOfVoice: import_zod2.z.string().max(120).default("Executive & Authoritative"),
-        preferredLanguage: import_zod2.z.string().max(16).default("en"),
-        timezone: import_zod2.z.string().max(64).default("UTC")
+      const payload = z2.object({
+        name: z2.string().min(2).max(120),
+        brandName: z2.string().min(2).max(120),
+        logoUrl: z2.string().max(512).default(""),
+        primaryColor: z2.string().regex(/^#[0-9a-fA-F]{6}$/),
+        secondaryColor: z2.string().regex(/^#[0-9a-fA-F]{6}$/),
+        accentColor: z2.string().regex(/^#[0-9a-fA-F]{6}$/).default("#F59E0B"),
+        businessDescription: z2.string().max(2e3).default(""),
+        industry: z2.string().max(100).default(""),
+        targetAudience: z2.string().max(500).default(""),
+        toneOfVoice: z2.string().max(120).default("Executive & Authoritative"),
+        preferredLanguage: z2.string().max(16).default("en"),
+        timezone: z2.string().max(64).default("UTC")
       }).parse(req.body);
       const now = (/* @__PURE__ */ new Date()).toISOString();
       db.transaction(() => {
@@ -7330,16 +7299,16 @@ function createApiRouter(db) {
   router.post("/workspaces/:wid/oauth/:platform/sandbox-authorize", requireAuth, requireWorkspaceMember, async (req, res) => {
     try {
       const platformKey = PlatformKeySchema.parse(req.params.platform);
-      const { state, ownerProfile } = import_zod2.z.object({
-        state: import_zod2.z.string().min(10).max(200),
-        ownerProfile: import_zod2.z.object({
-          accountName: import_zod2.z.string().max(120).optional(),
-          accountHandle: import_zod2.z.string().max(100).optional(),
-          ownerEmail: import_zod2.z.string().max(160).optional(),
-          businessCategory: import_zod2.z.string().max(120).optional(),
-          accountDescription: import_zod2.z.string().max(1200).optional(),
-          followersCount: import_zod2.z.number().int().min(0).max(5e8).optional(),
-          recentPosts: import_zod2.z.array(import_zod2.z.string().max(1200)).max(8).optional()
+      const { state, ownerProfile } = z2.object({
+        state: z2.string().min(10).max(200),
+        ownerProfile: z2.object({
+          accountName: z2.string().max(120).optional(),
+          accountHandle: z2.string().max(100).optional(),
+          ownerEmail: z2.string().max(160).optional(),
+          businessCategory: z2.string().max(120).optional(),
+          accountDescription: z2.string().max(1200).optional(),
+          followersCount: z2.number().int().min(0).max(5e8).optional(),
+          recentPosts: z2.array(z2.string().max(1200)).max(8).optional()
         }).optional()
       }).parse(req.body);
       const discovery = await handleOAuthCallbackForDiscovery(db, {
@@ -7366,8 +7335,8 @@ function createApiRouter(db) {
     try {
       const wid = String(req.params.wid);
       const sessionId = String(req.params.sessionId);
-      const { externalAccountIds } = import_zod2.z.object({
-        externalAccountIds: import_zod2.z.array(import_zod2.z.string().min(1).max(200)).min(1).max(50)
+      const { externalAccountIds } = z2.object({
+        externalAccountIds: z2.array(z2.string().min(1).max(200)).min(1).max(50)
       }).parse(req.body);
       const sub = getWorkspaceSubscriptionSummary(db, wid);
       const currentConnected = db.prepare("SELECT COUNT(*) as c FROM social_accounts WHERE workspace_id = ? AND connection_status != 'disconnected'").get(wid).c;
@@ -7448,14 +7417,14 @@ function createApiRouter(db) {
     try {
       const wid = String(req.params.wid);
       const accountId = String(req.params.accountId);
-      const prefs = import_zod2.z.object({
-        autoPublishEnabled: import_zod2.z.boolean(),
-        requireApprovalBeforePublish: import_zod2.z.boolean(),
-        defaultTimezone: import_zod2.z.string().min(2).max(64),
-        defaultVisibility: import_zod2.z.enum(["public", "connections", "unlisted"]),
-        appendDefaultHashtags: import_zod2.z.boolean(),
-        defaultHashtags: import_zod2.z.array(import_zod2.z.string().max(48)).max(15),
-        dailyPostLimit: import_zod2.z.number().int().min(1).max(100)
+      const prefs = z2.object({
+        autoPublishEnabled: z2.boolean(),
+        requireApprovalBeforePublish: z2.boolean(),
+        defaultTimezone: z2.string().min(2).max(64),
+        defaultVisibility: z2.enum(["public", "connections", "unlisted"]),
+        appendDefaultHashtags: z2.boolean(),
+        defaultHashtags: z2.array(z2.string().max(48)).max(15),
+        dailyPostLimit: z2.number().int().min(1).max(100)
       }).parse(req.body);
       const saved = updateSocialAccountPreferences(db, {
         workspaceId: wid,
@@ -7491,21 +7460,21 @@ function createApiRouter(db) {
     const rows = statusFilter && statusFilter !== "all" ? db.prepare("SELECT * FROM content_posts WHERE workspace_id = ? AND status = ? ORDER BY COALESCE(scheduled_for, created_at) DESC").all(wid, statusFilter) : db.prepare("SELECT * FROM content_posts WHERE workspace_id = ? ORDER BY COALESCE(scheduled_for, created_at) DESC").all(wid);
     res.json(rows.map(mapPostRow));
   });
-  const CreatePostSchema = import_zod2.z.object({
-    title: import_zod2.z.string().min(2).max(180),
-    caption: import_zod2.z.string().min(2).max(5e3),
+  const CreatePostSchema = z2.object({
+    title: z2.string().min(2).max(180),
+    caption: z2.string().min(2).max(5e3),
     platformKey: PlatformKeySchema,
-    status: import_zod2.z.enum(["draft", "pending", "scheduled"]).default("draft"),
-    campaignTag: import_zod2.z.string().max(80).nullable().optional(),
-    hashtags: import_zod2.z.array(import_zod2.z.string().max(64)).max(20).optional().default([]),
-    scheduledFor: import_zod2.z.string().nullable().optional()
+    status: z2.enum(["draft", "pending", "scheduled"]).default("draft"),
+    campaignTag: z2.string().max(80).nullable().optional(),
+    hashtags: z2.array(z2.string().max(64)).max(20).optional().default([]),
+    scheduledFor: z2.string().nullable().optional()
   });
   router.post("/workspaces/:wid/posts", requireAuth, requireWorkspaceMember, (req, res) => {
     try {
       const wid = String(req.params.wid);
       const payload = CreatePostSchema.parse(req.body);
       const now = (/* @__PURE__ */ new Date()).toISOString();
-      const postId = import_node_crypto7.default.randomUUID();
+      const postId = crypto7.randomUUID();
       const effectiveStatus = payload.scheduledFor && payload.status === "draft" ? "scheduled" : payload.status;
       db.transaction(() => {
         db.prepare(`
@@ -7528,13 +7497,13 @@ function createApiRouter(db) {
           now
         );
         if (effectiveStatus === "scheduled" || effectiveStatus === "pending") {
-          const scheduleId = import_node_crypto7.default.randomUUID();
+          const scheduleId = crypto7.randomUUID();
           const runAt = payload.scheduledFor || now;
           db.prepare(`
             INSERT INTO publishing_schedules (id, workspace_id, content_post_id, scheduled_at, timezone, is_active, created_at, updated_at)
             VALUES (?, ?, ?, ?, 'UTC', 1, ?, ?)
           `).run(scheduleId, wid, postId, runAt, now, now);
-          const jobId = import_node_crypto7.default.randomUUID();
+          const jobId = crypto7.randomUUID();
           db.prepare(`
             INSERT INTO publishing_jobs (id, workspace_id, schedule_id, content_post_id, platform_key, job_status, attempt_count, max_attempts, run_at, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, 'queued', 0, 3, ?, ?, ?)
@@ -7542,7 +7511,7 @@ function createApiRouter(db) {
           db.prepare(`
             INSERT INTO publishing_logs (id, publishing_job_id, workspace_id, log_level, message, created_at, updated_at)
             VALUES (?, ?, ?, 'info', 'Post added to Auto Publisher queue.', ?, ?)
-          `).run(import_node_crypto7.default.randomUUID(), jobId, wid, now, now);
+          `).run(crypto7.randomUUID(), jobId, wid, now, now);
         }
         recordAuditLog(db, {
           actorUserId: req.user.id,
@@ -7566,12 +7535,12 @@ function createApiRouter(db) {
       const postId = String(req.params.postId);
       const existing = db.prepare("SELECT * FROM content_posts WHERE id = ? AND workspace_id = ?").get(postId, wid);
       if (!existing) return res.status(404).json({ error: "Post not found." });
-      const payload = import_zod2.z.object({
-        title: import_zod2.z.string().min(2).max(180).optional(),
-        caption: import_zod2.z.string().min(2).max(5e3).optional(),
-        status: import_zod2.z.enum(["draft", "pending", "scheduled", "published", "failed"]).optional(),
-        scheduledFor: import_zod2.z.string().nullable().optional(),
-        campaignTag: import_zod2.z.string().max(80).nullable().optional()
+      const payload = z2.object({
+        title: z2.string().min(2).max(180).optional(),
+        caption: z2.string().min(2).max(5e3).optional(),
+        status: z2.enum(["draft", "pending", "scheduled", "published", "failed"]).optional(),
+        scheduledFor: z2.string().nullable().optional(),
+        campaignTag: z2.string().max(80).nullable().optional()
       }).parse(req.body);
       const nextStatus = payload.status ?? existing.status;
       if (!canTransitionPostStatus(existing.status, nextStatus, req.user.role === "super_admin")) {
@@ -7636,14 +7605,14 @@ function createApiRouter(db) {
     try {
       const wid = String(req.params.wid);
       const jobId = String(req.params.jobId);
-      const { action } = import_zod2.z.object({ action: import_zod2.z.enum(["dispatch", "retry", "cancel"]) }).parse(req.body);
+      const { action } = z2.object({ action: z2.enum(["dispatch", "retry", "cancel"]) }).parse(req.body);
       const job = db.prepare("SELECT * FROM publishing_jobs WHERE id = ? AND workspace_id = ?").get(jobId, wid);
       if (!job) return res.status(404).json({ error: "Publishing job not found." });
       const now = (/* @__PURE__ */ new Date()).toISOString();
       if (action === "cancel") {
         db.transaction(() => {
           db.prepare("UPDATE publishing_jobs SET job_status = 'cancelled', updated_at = ? WHERE id = ?").run(now, jobId);
-          db.prepare("INSERT INTO publishing_logs (id, publishing_job_id, workspace_id, log_level, message, created_at, updated_at) VALUES (?, ?, ?, 'warn', 'Job cancelled by workspace user.', ?, ?)").run(import_node_crypto7.default.randomUUID(), jobId, wid, now, now);
+          db.prepare("INSERT INTO publishing_logs (id, publishing_job_id, workspace_id, log_level, message, created_at, updated_at) VALUES (?, ?, ?, 'warn', 'Job cancelled by workspace user.', ?, ?)").run(crypto7.randomUUID(), jobId, wid, now, now);
         })();
         return res.json({ status: "cancelled" });
       }
@@ -7651,7 +7620,7 @@ function createApiRouter(db) {
         db.transaction(() => {
           db.prepare("UPDATE publishing_jobs SET job_status = 'queued', last_error = NULL, updated_at = ? WHERE id = ?").run(now, jobId);
           db.prepare("UPDATE content_posts SET status = 'scheduled', failure_reason = NULL, updated_at = ? WHERE id = ?").run(now, job.content_post_id);
-          db.prepare("INSERT INTO publishing_logs (id, publishing_job_id, workspace_id, log_level, message, created_at, updated_at) VALUES (?, ?, ?, 'info', 'Job re-queued for next Auto Publisher dispatch cycle.', ?, ?)").run(import_node_crypto7.default.randomUUID(), jobId, wid, now, now);
+          db.prepare("INSERT INTO publishing_logs (id, publishing_job_id, workspace_id, log_level, message, created_at, updated_at) VALUES (?, ?, ?, 'info', 'Job re-queued for next Auto Publisher dispatch cycle.', ?, ?)").run(crypto7.randomUUID(), jobId, wid, now, now);
         })();
         return res.json({ status: "queued" });
       }
@@ -7666,14 +7635,14 @@ function createApiRouter(db) {
         db.transaction(() => {
           db.prepare("UPDATE publishing_jobs SET job_status = 'failed', attempt_count = attempt_count + 1, last_error = ?, updated_at = ? WHERE id = ?").run(errMsg, now, jobId);
           db.prepare("UPDATE content_posts SET status = 'failed', failure_reason = ?, updated_at = ? WHERE id = ?").run(errMsg, now, job.content_post_id);
-          db.prepare("INSERT INTO publishing_logs (id, publishing_job_id, workspace_id, log_level, message, created_at, updated_at) VALUES (?, ?, ?, 'error', ?, ?, ?)").run(import_node_crypto7.default.randomUUID(), jobId, wid, errMsg, now, now);
+          db.prepare("INSERT INTO publishing_logs (id, publishing_job_id, workspace_id, log_level, message, created_at, updated_at) VALUES (?, ?, ?, 'error', ?, ?, ?)").run(crypto7.randomUUID(), jobId, wid, errMsg, now, now);
         })();
         return res.status(422).json({ error: errMsg, status: "failed" });
       }
       db.transaction(() => {
         db.prepare("UPDATE publishing_jobs SET job_status = 'succeeded', attempt_count = attempt_count + 1, completed_at = ?, updated_at = ? WHERE id = ?").run(now, now, jobId);
         db.prepare("UPDATE content_posts SET status = 'published', published_at = ?, updated_at = ? WHERE id = ?").run(now, now, job.content_post_id);
-        db.prepare("INSERT INTO publishing_logs (id, publishing_job_id, workspace_id, log_level, message, created_at, updated_at) VALUES (?, ?, ?, 'info', 'Published to connected official account.', ?, ?)").run(import_node_crypto7.default.randomUUID(), jobId, wid, now, now);
+        db.prepare("INSERT INTO publishing_logs (id, publishing_job_id, workspace_id, log_level, message, created_at, updated_at) VALUES (?, ?, ?, 'info', 'Published to connected official account.', ?, ?)").run(crypto7.randomUUID(), jobId, wid, now, now);
       })();
       return res.json({ status: "succeeded" });
     } catch (err) {
@@ -7683,12 +7652,12 @@ function createApiRouter(db) {
   router.post("/workspaces/:wid/ai/generate-post", requireAuth, requireWorkspaceMember, async (req, res) => {
     try {
       const wid = String(req.params.wid);
-      const payload = import_zod2.z.object({
+      const payload = z2.object({
         platform: PlatformKeySchema,
-        topic: import_zod2.z.string().min(3, "Enter a topic or keywords (at least 3 characters).").max(1500),
-        keywords: import_zod2.z.union([import_zod2.z.array(import_zod2.z.string().max(48)).max(15), import_zod2.z.string().max(400)]).optional().default([]),
-        objective: import_zod2.z.string().min(2).max(120).default("Brand Authority & Lead Generation"),
-        tone: import_zod2.z.string().min(2).max(120).default("Executive & Authoritative")
+        topic: z2.string().min(3, "Enter a topic or keywords (at least 3 characters).").max(1500),
+        keywords: z2.union([z2.array(z2.string().max(48)).max(15), z2.string().max(400)]).optional().default([]),
+        objective: z2.string().min(2).max(120).default("Brand Authority & Lead Generation"),
+        tone: z2.string().min(2).max(120).default("Executive & Authoritative")
       }).parse(req.body);
       const keywordsList = Array.isArray(payload.keywords) ? payload.keywords.map((k) => k.trim()).filter(Boolean) : parseKeywordsInput(payload.keywords);
       const bp = db.prepare("SELECT * FROM brand_profiles WHERE workspace_id = ?").get(wid);
@@ -7727,11 +7696,11 @@ function createApiRouter(db) {
     try {
       const wid = String(req.params.wid);
       const suggestionId = String(req.params.suggestionId);
-      const payload = import_zod2.z.object({
-        headline: import_zod2.z.string().min(2, "Headline is required.").max(200),
-        postCopy: import_zod2.z.string().min(2, "Post copy cannot be empty.").max(5e3),
-        hashtags: import_zod2.z.array(import_zod2.z.string().max(64)).max(20).default([]),
-        callToAction: import_zod2.z.string().max(300).default(""),
+      const payload = z2.object({
+        headline: z2.string().min(2, "Headline is required.").max(200),
+        postCopy: z2.string().min(2, "Post copy cannot be empty.").max(5e3),
+        hashtags: z2.array(z2.string().max(64)).max(20).default([]),
+        callToAction: z2.string().max(300).default(""),
         platformKey: PlatformKeySchema.optional()
       }).parse(req.body);
       const updated = updateAiSuggestion(db, {
@@ -7770,12 +7739,12 @@ function createApiRouter(db) {
       const suggestionId = String(req.params.suggestionId);
       const existing = db.prepare("SELECT * FROM ai_content_suggestions WHERE id = ? AND workspace_id = ?").get(suggestionId, wid);
       if (!existing) return res.status(404).json({ error: "AI content suggestion not found." });
-      const payload = import_zod2.z.object({
-        status: import_zod2.z.enum(["draft", "scheduled"]).default("draft"),
-        scheduledFor: import_zod2.z.string().nullable().optional()
+      const payload = z2.object({
+        status: z2.enum(["draft", "scheduled"]).default("draft"),
+        scheduledFor: z2.string().nullable().optional()
       }).parse(req.body);
       const now = (/* @__PURE__ */ new Date()).toISOString();
-      const postId = import_node_crypto7.default.randomUUID();
+      const postId = crypto7.randomUUID();
       const cta = String(existing.call_to_action || "").trim();
       const fullCaption = cta ? `${String(existing.post_copy).trim()}
 
@@ -7801,12 +7770,12 @@ ${cta}` : String(existing.post_copy).trim();
           now
         );
         if (payload.status === "scheduled" && runAt) {
-          const scheduleId = import_node_crypto7.default.randomUUID();
+          const scheduleId = crypto7.randomUUID();
           db.prepare(`
             INSERT INTO publishing_schedules (id, workspace_id, content_post_id, scheduled_at, timezone, is_active, created_at, updated_at)
             VALUES (?, ?, ?, ?, 'UTC', 1, ?, ?)
           `).run(scheduleId, wid, postId, runAt, now, now);
-          const jobId = import_node_crypto7.default.randomUUID();
+          const jobId = crypto7.randomUUID();
           db.prepare(`
             INSERT INTO publishing_jobs (id, workspace_id, schedule_id, content_post_id, platform_key, job_status, attempt_count, max_attempts, run_at, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, 'queued', 0, 3, ?, ?, ?)
@@ -7814,7 +7783,7 @@ ${cta}` : String(existing.post_copy).trim();
           db.prepare(`
             INSERT INTO publishing_logs (id, publishing_job_id, workspace_id, log_level, message, created_at, updated_at)
             VALUES (?, ?, ?, 'info', 'AI Studio suggestion promoted and added to Auto Publisher queue.', ?, ?)
-          `).run(import_node_crypto7.default.randomUUID(), jobId, wid, now, now);
+          `).run(crypto7.randomUUID(), jobId, wid, now, now);
         }
         db.prepare(`
           UPDATE ai_content_suggestions
@@ -7831,9 +7800,9 @@ ${cta}` : String(existing.post_copy).trim();
   router.post("/workspaces/:wid/ai/generate-strategy", requireAuth, requireWorkspaceMember, async (req, res) => {
     try {
       const wid = String(req.params.wid);
-      const payload = import_zod2.z.object({
-        goals: import_zod2.z.string().min(5, "Specify your 30-day growth goals.").max(1200),
-        platforms: import_zod2.z.array(PlatformKeySchema).min(1).max(8)
+      const payload = z2.object({
+        goals: z2.string().min(5, "Specify your 30-day growth goals.").max(1200),
+        platforms: z2.array(PlatformKeySchema).min(1).max(8)
       }).parse(req.body);
       const bp = db.prepare("SELECT * FROM brand_profiles WHERE workspace_id = ?").get(wid);
       const result = await generateAiContentStrategy(db, {
@@ -7877,9 +7846,9 @@ ${cta}` : String(existing.post_copy).trim();
     try {
       const wid = String(req.params.wid);
       const itemId = String(req.params.itemId);
-      const { replyText, status } = import_zod2.z.object({
-        replyText: import_zod2.z.string().min(1).max(2e3).optional(),
-        status: import_zod2.z.enum(["open", "replied", "archived"]).default("replied")
+      const { replyText, status } = z2.object({
+        replyText: z2.string().min(1).max(2e3).optional(),
+        status: z2.enum(["open", "replied", "archived"]).default("replied")
       }).parse(req.body);
       const now = (/* @__PURE__ */ new Date()).toISOString();
       const updated = db.prepare("UPDATE engagement_items SET reply_text = COALESCE(?, reply_text), status = ?, updated_at = ? WHERE id = ? AND workspace_id = ?").run(
@@ -7908,16 +7877,16 @@ ${cta}` : String(existing.post_copy).trim();
   router.post("/workspaces/:wid/media", requireAuth, requireWorkspaceMember, (req, res) => {
     try {
       const wid = String(req.params.wid);
-      const payload = import_zod2.z.object({
-        fileName: import_zod2.z.string().min(2).max(160),
-        assetType: import_zod2.z.enum(["image", "video", "document", "template"]),
-        mimeType: import_zod2.z.string().min(3).max(100).default("image/png"),
-        publicUrl: import_zod2.z.string().min(1).max(1024),
-        fileSizeBytes: import_zod2.z.number().int().min(0).max(536870912).default(0),
-        folder: import_zod2.z.string().min(1).max(64).default("General")
+      const payload = z2.object({
+        fileName: z2.string().min(2).max(160),
+        assetType: z2.enum(["image", "video", "document", "template"]),
+        mimeType: z2.string().min(3).max(100).default("image/png"),
+        publicUrl: z2.string().min(1).max(1024),
+        fileSizeBytes: z2.number().int().min(0).max(536870912).default(0),
+        folder: z2.string().min(1).max(64).default("General")
       }).parse(req.body);
       const now = (/* @__PURE__ */ new Date()).toISOString();
-      const id = import_node_crypto7.default.randomUUID();
+      const id = crypto7.randomUUID();
       db.prepare(`
         INSERT INTO media_library (id, workspace_id, uploaded_by, file_name, asset_type, mime_type, storage_path, public_url, file_size_bytes, folder, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -7950,7 +7919,7 @@ ${cta}` : String(existing.post_copy).trim();
   });
   router.post("/workspaces/:wid/notifications/mark-read", requireAuth, requireWorkspaceMember, (req, res) => {
     const wid = String(req.params.wid);
-    const { notificationId } = import_zod2.z.object({ notificationId: import_zod2.z.string().optional() }).parse(req.body || {});
+    const { notificationId } = z2.object({ notificationId: z2.string().optional() }).parse(req.body || {});
     const now = (/* @__PURE__ */ new Date()).toISOString();
     if (notificationId) {
       db.prepare("UPDATE notifications SET is_read = 1, updated_at = ? WHERE id = ? AND workspace_id = ?").run(now, notificationId, wid);
@@ -8008,9 +7977,9 @@ ${cta}` : String(existing.post_copy).trim();
   router.post("/workspaces/:wid/subscription/change", requireAuth, requireWorkspaceMember, (req, res) => {
     try {
       const wid = String(req.params.wid);
-      const { planCode, billingCycle } = import_zod2.z.object({
-        planCode: import_zod2.z.enum(["basic", "pro", "enterprise", "starter", "growth", "agency"]),
-        billingCycle: import_zod2.z.enum(["monthly", "annual"]).default("monthly")
+      const { planCode, billingCycle } = z2.object({
+        planCode: z2.enum(["basic", "pro", "enterprise", "starter", "growth", "agency"]),
+        billingCycle: z2.enum(["monthly", "annual"]).default("monthly")
       }).parse(req.body);
       const plan = db.prepare("SELECT * FROM subscription_plans WHERE code = ?").get(planCode);
       if (!plan) return res.status(404).json({ error: "Plan not found." });
@@ -8031,7 +8000,7 @@ ${cta}` : String(existing.post_copy).trim();
           db.prepare(`
             INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
             VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
-          `).run(import_node_crypto7.default.randomUUID(), ws.organisation_id, wid, plan.id, billingCycle, now, nextPeriodEnd, now, now);
+          `).run(crypto7.randomUUID(), ws.organisation_id, wid, plan.id, billingCycle, now, nextPeriodEnd, now, now);
         }
         db.prepare("UPDATE workspaces SET ai_credits_balance = MAX(ai_credits_balance, ?), updated_at = ? WHERE id = ?").run(
           Number(plan.monthly_ai_credits),
@@ -8125,9 +8094,9 @@ ${cta}` : String(existing.post_copy).trim();
   router.post("/workspaces/:wid/members", requireAuth, requireWorkspaceMember, (req, res) => {
     try {
       const wid = String(req.params.wid);
-      const { email, role } = import_zod2.z.object({
-        email: import_zod2.z.string().email(),
-        role: import_zod2.z.enum(["workspace_admin", "editor", "viewer"])
+      const { email, role } = z2.object({
+        email: z2.string().email(),
+        role: z2.enum(["workspace_admin", "editor", "viewer"])
       }).parse(req.body);
       const sub = getWorkspaceSubscriptionSummary(db, wid);
       const currentMembers = db.prepare("SELECT COUNT(*) as c FROM workspace_members WHERE workspace_id = ? AND status != 'revoked'").get(wid).c;
@@ -8138,7 +8107,7 @@ ${cta}` : String(existing.post_copy).trim();
       const normalized = email.trim().toLowerCase();
       const now = (/* @__PURE__ */ new Date()).toISOString();
       const existingUser = db.prepare("SELECT id FROM users WHERE email = ?").get(normalized);
-      const id = import_node_crypto7.default.randomUUID();
+      const id = crypto7.randomUUID();
       db.prepare(`
         INSERT INTO workspace_members (id, workspace_id, user_id, invited_email, role_slug, status, invited_by, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, 'invited', ?, ?, ?)
@@ -8173,13 +8142,13 @@ ${cta}` : String(existing.post_copy).trim();
   router.post("/workspaces/:wid/tickets", requireAuth, requireWorkspaceMember, (req, res) => {
     try {
       const wid = String(req.params.wid);
-      const payload = import_zod2.z.object({
-        subject: import_zod2.z.string().min(4).max(180),
-        message: import_zod2.z.string().min(10).max(3e3),
-        priority: import_zod2.z.enum(["low", "medium", "high", "urgent"]).default("medium")
+      const payload = z2.object({
+        subject: z2.string().min(4).max(180),
+        message: z2.string().min(10).max(3e3),
+        priority: z2.enum(["low", "medium", "high", "urgent"]).default("medium")
       }).parse(req.body);
       const now = (/* @__PURE__ */ new Date()).toISOString();
-      const id = import_node_crypto7.default.randomUUID();
+      const id = crypto7.randomUUID();
       db.prepare(`
         INSERT INTO support_tickets (id, workspace_id, owner_user_id, subject, message, priority, status, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?)
@@ -8227,10 +8196,10 @@ ${cta}` : String(existing.post_copy).trim();
   router.patch("/admin/users/:userId", (req, res) => {
     try {
       const userId = String(req.params.userId);
-      const payload = import_zod2.z.object({
-        status: import_zod2.z.enum(["active", "suspended", "deleted"]).optional(),
-        role: import_zod2.z.enum(["customer", "workspace_admin", "super_admin"]).optional(),
-        emailVerified: import_zod2.z.boolean().optional()
+      const payload = z2.object({
+        status: z2.enum(["active", "suspended", "deleted"]).optional(),
+        role: z2.enum(["customer", "workspace_admin", "super_admin"]).optional(),
+        emailVerified: z2.boolean().optional()
       }).parse(req.body);
       const target = db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
       if (!target) return res.status(404).json({ error: "User not found." });
@@ -8291,9 +8260,9 @@ ${cta}` : String(existing.post_copy).trim();
   router.patch("/admin/subscriptions/:subId", (req, res) => {
     try {
       const subId = String(req.params.subId);
-      const payload = import_zod2.z.object({
-        status: import_zod2.z.enum(["trialing", "active", "past_due", "cancelled"]).optional(),
-        planCode: import_zod2.z.enum(["basic", "pro", "enterprise", "starter", "growth", "agency"]).optional()
+      const payload = z2.object({
+        status: z2.enum(["trialing", "active", "past_due", "cancelled"]).optional(),
+        planCode: z2.enum(["basic", "pro", "enterprise", "starter", "growth", "agency"]).optional()
       }).parse(req.body);
       const now = (/* @__PURE__ */ new Date()).toISOString();
       if (payload.planCode) {
@@ -8384,15 +8353,15 @@ ${cta}` : String(existing.post_copy).trim();
   router.patch("/admin/platforms/:platformKey", (req, res) => {
     try {
       const platformKey = PlatformKeySchema.parse(req.params.platformKey);
-      const payload = import_zod2.z.object({
-        isEnabled: import_zod2.z.boolean().optional(),
-        clientIdOverride: import_zod2.z.string().max(240).nullable().optional(),
-        clientSecretOverride: import_zod2.z.string().max(400).nullable().optional(),
-        developerReviewStatus: import_zod2.z.enum(["not_submitted", "pending_review", "approved", "action_required"]).optional(),
-        rateLimitRpm: import_zod2.z.number().int().min(10).max(1e4).optional(),
-        scopes: import_zod2.z.string().min(2).max(1e3).optional(),
-        clearLastError: import_zod2.z.boolean().optional(),
-        permissionApprovals: import_zod2.z.record(import_zod2.z.string(), import_zod2.z.enum(["not_submitted", "pending_review", "approved", "action_required"])).optional()
+      const payload = z2.object({
+        isEnabled: z2.boolean().optional(),
+        clientIdOverride: z2.string().max(240).nullable().optional(),
+        clientSecretOverride: z2.string().max(400).nullable().optional(),
+        developerReviewStatus: z2.enum(["not_submitted", "pending_review", "approved", "action_required"]).optional(),
+        rateLimitRpm: z2.number().int().min(10).max(1e4).optional(),
+        scopes: z2.string().min(2).max(1e3).optional(),
+        clearLastError: z2.boolean().optional(),
+        permissionApprovals: z2.record(z2.string(), z2.enum(["not_submitted", "pending_review", "approved", "action_required"])).optional()
       }).parse(req.body);
       const now = (/* @__PURE__ */ new Date()).toISOString();
       db.transaction(() => {
@@ -8521,7 +8490,7 @@ ${cta}` : String(existing.post_copy).trim();
   });
   router.patch("/admin/settings", (req, res) => {
     try {
-      const { key, value } = import_zod2.z.object({ key: import_zod2.z.string().min(1).max(80), value: import_zod2.z.string().max(2e3) }).parse(req.body);
+      const { key, value } = z2.object({ key: z2.string().min(1).max(80), value: z2.string().max(2e3) }).parse(req.body);
       const now = (/* @__PURE__ */ new Date()).toISOString();
       const updated = db.prepare("UPDATE system_settings SET value = ?, updated_at = ? WHERE key = ?").run(value, now, key);
       if (updated.changes === 0) {
@@ -8574,9 +8543,9 @@ ${cta}` : String(existing.post_copy).trim();
   router.patch("/admin/tickets/:ticketId", (req, res) => {
     try {
       const ticketId = String(req.params.ticketId);
-      const payload = import_zod2.z.object({
-        status: import_zod2.z.enum(["open", "in_progress", "resolved", "closed"]),
-        adminNotes: import_zod2.z.string().max(2e3).optional()
+      const payload = z2.object({
+        status: z2.enum(["open", "in_progress", "resolved", "closed"]),
+        adminNotes: z2.string().max(2e3).optional()
       }).parse(req.body);
       const now = (/* @__PURE__ */ new Date()).toISOString();
       db.prepare("UPDATE support_tickets SET status = ?, admin_notes = COALESCE(?, admin_notes), updated_at = ? WHERE id = ?").run(
@@ -8742,13 +8711,13 @@ function mapAuditRow(r) {
 }
 
 // server/routes/phase3.ts
-var import_express2 = require("express");
-var import_node_crypto15 = __toESM(require("node:crypto"), 1);
-var import_zod3 = require("zod");
+import { Router as Router2 } from "express";
+import crypto15 from "node:crypto";
+import { z as z3 } from "zod";
 
 // server/ai/modules/brandAnalysis.ts
-var import_genai3 = require("@google/genai");
-var import_node_crypto8 = __toESM(require("node:crypto"), 1);
+import { Type as Type2 } from "@google/genai";
+import crypto8 from "node:crypto";
 function mapBrandAnalysisRow(r) {
   return {
     id: String(r.id),
@@ -8812,49 +8781,49 @@ ${params.additionalNotes || "None"}`;
     systemInstruction: "You are an enterprise Brand Intelligence Analyst. Always distinguish verified facts from assumptions. Never invent data or promise guaranteed growth.",
     prompt,
     responseSchema: {
-      type: import_genai3.Type.OBJECT,
+      type: Type2.OBJECT,
       properties: {
-        brandSummary: { type: import_genai3.Type.STRING },
-        verifiedFacts: { type: import_genai3.Type.ARRAY, items: { type: import_genai3.Type.STRING } },
-        assumptions: { type: import_genai3.Type.ARRAY, items: { type: import_genai3.Type.STRING } },
+        brandSummary: { type: Type2.STRING },
+        verifiedFacts: { type: Type2.ARRAY, items: { type: Type2.STRING } },
+        assumptions: { type: Type2.ARRAY, items: { type: Type2.STRING } },
         audienceInsights: {
-          type: import_genai3.Type.OBJECT,
+          type: Type2.OBJECT,
           properties: {
             primarySegments: {
-              type: import_genai3.Type.ARRAY,
+              type: Type2.ARRAY,
               items: {
-                type: import_genai3.Type.OBJECT,
+                type: Type2.OBJECT,
                 properties: {
-                  name: { type: import_genai3.Type.STRING },
-                  painPoints: { type: import_genai3.Type.ARRAY, items: { type: import_genai3.Type.STRING } },
-                  buyingTriggers: { type: import_genai3.Type.ARRAY, items: { type: import_genai3.Type.STRING } },
-                  preferredFormats: { type: import_genai3.Type.ARRAY, items: { type: import_genai3.Type.STRING } }
+                  name: { type: Type2.STRING },
+                  painPoints: { type: Type2.ARRAY, items: { type: Type2.STRING } },
+                  buyingTriggers: { type: Type2.ARRAY, items: { type: Type2.STRING } },
+                  preferredFormats: { type: Type2.ARRAY, items: { type: Type2.STRING } }
                 },
                 required: ["name", "painPoints", "buyingTriggers", "preferredFormats"]
               }
             },
-            evidenceStatus: { type: import_genai3.Type.STRING }
+            evidenceStatus: { type: Type2.STRING }
           },
           required: ["primarySegments", "evidenceStatus"]
         },
         contentThemes: {
-          type: import_genai3.Type.ARRAY,
+          type: Type2.ARRAY,
           items: {
-            type: import_genai3.Type.OBJECT,
+            type: Type2.OBJECT,
             properties: {
-              theme: { type: import_genai3.Type.STRING },
-              rationale: { type: import_genai3.Type.STRING },
-              priority: { type: import_genai3.Type.STRING, enum: ["high", "medium", "supporting"] }
+              theme: { type: Type2.STRING },
+              rationale: { type: Type2.STRING },
+              priority: { type: Type2.STRING, enum: ["high", "medium", "supporting"] }
             },
             required: ["theme", "rationale", "priority"]
           }
         },
-        voiceGuidelines: { type: import_genai3.Type.ARRAY, items: { type: import_genai3.Type.STRING } }
+        voiceGuidelines: { type: Type2.ARRAY, items: { type: Type2.STRING } }
       },
       required: ["brandSummary", "verifiedFacts", "assumptions", "audienceInsights", "contentThemes", "voiceGuidelines"]
     }
   });
-  const id = import_node_crypto8.default.randomUUID();
+  const id = crypto8.randomUUID();
   const now = (/* @__PURE__ */ new Date()).toISOString();
   db.prepare(
     `INSERT INTO ai_brand_analyses (
@@ -8887,7 +8856,7 @@ function listBrandAnalyses(db, workspaceId) {
 }
 
 // server/ai/modules/audienceAnalysis.ts
-var import_genai4 = require("@google/genai");
+import { Type as Type3 } from "@google/genai";
 async function runAudienceAnalysisModule(db, params) {
   const ctx = loadPermittedWorkspaceContext(db, params.workspaceId);
   const prompt = `Analyze the target audience for this brand.
@@ -8907,21 +8876,21 @@ Live Analytics Snapshots Available: ${ctx.liveAnalytics.length}`;
     systemInstruction: "You are a senior audience strategist. Separate verified insights from working hypotheses.",
     prompt,
     responseSchema: {
-      type: import_genai4.Type.OBJECT,
+      type: Type3.OBJECT,
       properties: {
-        evidenceStatus: { type: import_genai4.Type.STRING },
+        evidenceStatus: { type: Type3.STRING },
         segments: {
-          type: import_genai4.Type.ARRAY,
+          type: Type3.ARRAY,
           items: {
-            type: import_genai4.Type.OBJECT,
+            type: Type3.OBJECT,
             properties: {
-              name: { type: import_genai4.Type.STRING },
-              demographicsAndRole: { type: import_genai4.Type.STRING },
-              corePainPoints: { type: import_genai4.Type.ARRAY, items: { type: import_genai4.Type.STRING } },
-              desiredOutcomes: { type: import_genai4.Type.ARRAY, items: { type: import_genai4.Type.STRING } },
-              contentAngles: { type: import_genai4.Type.ARRAY, items: { type: import_genai4.Type.STRING } },
-              recommendedPlatforms: { type: import_genai4.Type.ARRAY, items: { type: import_genai4.Type.STRING } },
-              isAssumption: { type: import_genai4.Type.BOOLEAN }
+              name: { type: Type3.STRING },
+              demographicsAndRole: { type: Type3.STRING },
+              corePainPoints: { type: Type3.ARRAY, items: { type: Type3.STRING } },
+              desiredOutcomes: { type: Type3.ARRAY, items: { type: Type3.STRING } },
+              contentAngles: { type: Type3.ARRAY, items: { type: Type3.STRING } },
+              recommendedPlatforms: { type: Type3.ARRAY, items: { type: Type3.STRING } },
+              isAssumption: { type: Type3.BOOLEAN }
             },
             required: [
               "name",
@@ -8934,8 +8903,8 @@ Live Analytics Snapshots Available: ${ctx.liveAnalytics.length}`;
             ]
           }
         },
-        messagingDo: { type: import_genai4.Type.ARRAY, items: { type: import_genai4.Type.STRING } },
-        messagingDont: { type: import_genai4.Type.ARRAY, items: { type: import_genai4.Type.STRING } }
+        messagingDo: { type: Type3.ARRAY, items: { type: Type3.STRING } },
+        messagingDont: { type: Type3.ARRAY, items: { type: Type3.STRING } }
       },
       required: ["evidenceStatus", "segments", "messagingDo", "messagingDont"]
     }
@@ -8947,8 +8916,8 @@ Live Analytics Snapshots Available: ${ctx.liveAnalytics.length}`;
 }
 
 // server/ai/modules/contentStrategy.ts
-var import_genai5 = require("@google/genai");
-var import_node_crypto9 = __toESM(require("node:crypto"), 1);
+import { Type as Type4 } from "@google/genai";
+import crypto9 from "node:crypto";
 function mapStrategyRow(r) {
   return {
     id: String(r.id),
@@ -8991,43 +8960,43 @@ ${socialContextBlock}`;
     systemInstruction: "You are a Chief Brand Strategist. Produce practical, grounded, platform-accurate strategies without hype or guaranteed-growth claims.",
     prompt,
     responseSchema: {
-      type: import_genai5.Type.OBJECT,
+      type: Type4.OBJECT,
       properties: {
-        title: { type: import_genai5.Type.STRING },
-        executiveSummary: { type: import_genai5.Type.STRING },
+        title: { type: Type4.STRING },
+        executiveSummary: { type: Type4.STRING },
         pillars: {
-          type: import_genai5.Type.ARRAY,
+          type: Type4.ARRAY,
           items: {
-            type: import_genai5.Type.OBJECT,
+            type: Type4.OBJECT,
             properties: {
-              name: { type: import_genai5.Type.STRING },
-              sharePercent: { type: import_genai5.Type.INTEGER },
-              objective: { type: import_genai5.Type.STRING },
-              sampleHooks: { type: import_genai5.Type.ARRAY, items: { type: import_genai5.Type.STRING } }
+              name: { type: Type4.STRING },
+              sharePercent: { type: Type4.INTEGER },
+              objective: { type: Type4.STRING },
+              sampleHooks: { type: Type4.ARRAY, items: { type: Type4.STRING } }
             },
             required: ["name", "sharePercent", "objective", "sampleHooks"]
           }
         },
         weeklyCadence: {
-          type: import_genai5.Type.ARRAY,
+          type: Type4.ARRAY,
           items: {
-            type: import_genai5.Type.OBJECT,
+            type: Type4.OBJECT,
             properties: {
-              day: { type: import_genai5.Type.STRING },
-              platform: { type: import_genai5.Type.STRING },
-              format: { type: import_genai5.Type.STRING },
-              focus: { type: import_genai5.Type.STRING }
+              day: { type: Type4.STRING },
+              platform: { type: Type4.STRING },
+              format: { type: Type4.STRING },
+              focus: { type: Type4.STRING }
             },
             required: ["day", "platform", "format", "focus"]
           }
         },
-        kpis: { type: import_genai5.Type.ARRAY, items: { type: import_genai5.Type.STRING } },
-        evidenceNote: { type: import_genai5.Type.STRING }
+        kpis: { type: Type4.ARRAY, items: { type: Type4.STRING } },
+        evidenceNote: { type: Type4.STRING }
       },
       required: ["title", "executiveSummary", "pillars", "weeklyCadence", "kpis", "evidenceNote"]
     }
   });
-  const id = import_node_crypto9.default.randomUUID();
+  const id = crypto9.randomUUID();
   const now = (/* @__PURE__ */ new Date()).toISOString();
   db.prepare(
     `INSERT INTO ai_content_strategies (
@@ -9059,7 +9028,7 @@ function listContentStrategies(db, workspaceId) {
 }
 
 // server/ai/modules/calendarGeneration.ts
-var import_genai6 = require("@google/genai");
+import { Type as Type5 } from "@google/genai";
 async function runCalendarGenerationModule(db, params) {
   const ctx = loadPermittedWorkspaceContext(db, params.workspaceId);
   const hasLiveInsights = ctx.liveAnalytics.length > 0;
@@ -9088,30 +9057,30 @@ Use HH:mm 24-hour format for suggestedLocalTime.`;
     systemInstruction: "You are a meticulous social media operations planner. Never fabricate analytics or invent optimal posting times without data.",
     prompt,
     responseSchema: {
-      type: import_genai6.Type.OBJECT,
+      type: Type5.OBJECT,
       properties: {
-        evidenceDisclaimer: { type: import_genai6.Type.STRING },
+        evidenceDisclaimer: { type: Type5.STRING },
         items: {
-          type: import_genai6.Type.ARRAY,
+          type: Type5.ARRAY,
           items: {
-            type: import_genai6.Type.OBJECT,
+            type: Type5.OBJECT,
             properties: {
-              dayOffset: { type: import_genai6.Type.INTEGER },
-              suggestedLocalTime: { type: import_genai6.Type.STRING },
+              dayOffset: { type: Type5.INTEGER },
+              suggestedLocalTime: { type: Type5.STRING },
               platformKey: {
-                type: import_genai6.Type.STRING,
+                type: Type5.STRING,
                 enum: ["facebook", "instagram", "tiktok", "linkedin", "youtube", "x", "pinterest", "google_business"]
               },
               formatKey: {
-                type: import_genai6.Type.STRING,
+                type: Type5.STRING,
                 enum: ["text", "image", "video", "carousel", "story", "reels", "short_form_video"]
               },
-              title: { type: import_genai6.Type.STRING },
-              bodyText: { type: import_genai6.Type.STRING },
-              hashtags: { type: import_genai6.Type.ARRAY, items: { type: import_genai6.Type.STRING } },
-              rationale: { type: import_genai6.Type.STRING },
+              title: { type: Type5.STRING },
+              bodyText: { type: Type5.STRING },
+              hashtags: { type: Type5.ARRAY, items: { type: Type5.STRING } },
+              rationale: { type: Type5.STRING },
               timeEvidenceBasis: {
-                type: import_genai6.Type.STRING,
+                type: Type5.STRING,
                 enum: ["verified_audience_insights", "user_preference_window", "no_insights_general_working_hours"]
               }
             },
@@ -9141,11 +9110,11 @@ Use HH:mm 24-hour format for suggestedLocalTime.`;
 }
 
 // server/ai/modules/postWriting.ts
-var import_genai7 = require("@google/genai");
-var import_node_crypto11 = __toESM(require("node:crypto"), 1);
+import { Type as Type6 } from "@google/genai";
+import crypto11 from "node:crypto";
 
 // server/services/contentSafetyService.ts
-var import_node_crypto10 = __toESM(require("node:crypto"), 1);
+import crypto10 from "node:crypto";
 var MISLEADING_CLAIM_PATTERNS = [
   {
     pattern: /\b(guaranteed|100%\s*guaranteed)\s+(followers|growth|viral|sales|roi|income|results)\b/i,
@@ -9183,7 +9152,7 @@ var SENSITIVE_OR_SPAM_PATTERNS = [
 ];
 function computeContentHash(text, hashtags = []) {
   const normalized = `${text.trim().toLowerCase().replace(/\s+/g, " ")}|${hashtags.map((h) => h.trim().toLowerCase()).sort().join(",")}`;
-  return import_node_crypto10.default.createHash("sha256").update(normalized).digest("hex");
+  return crypto10.createHash("sha256").update(normalized).digest("hex");
 }
 function getWorkspaceBrandSafetyRules(db, workspaceId) {
   const row = db.prepare(
@@ -9399,15 +9368,15 @@ STRICT COMPLIANCE:
     systemInstruction: "You are a senior international brand copywriter. Write sharp, authentic, platform-native social copy that strictly follows brand guidelines and character limits.",
     prompt,
     responseSchema: {
-      type: import_genai7.Type.OBJECT,
+      type: Type6.OBJECT,
       properties: {
-        title: { type: import_genai7.Type.STRING },
-        headlineOptions: { type: import_genai7.Type.ARRAY, items: { type: import_genai7.Type.STRING } },
-        bodyText: { type: import_genai7.Type.STRING },
-        captionText: { type: import_genai7.Type.STRING },
-        hashtags: { type: import_genai7.Type.ARRAY, items: { type: import_genai7.Type.STRING } },
-        callToAction: { type: import_genai7.Type.STRING },
-        imagePrompt: { type: import_genai7.Type.STRING }
+        title: { type: Type6.STRING },
+        headlineOptions: { type: Type6.ARRAY, items: { type: Type6.STRING } },
+        bodyText: { type: Type6.STRING },
+        captionText: { type: Type6.STRING },
+        hashtags: { type: Type6.ARRAY, items: { type: Type6.STRING } },
+        callToAction: { type: Type6.STRING },
+        imagePrompt: { type: Type6.STRING }
       },
       required: ["title", "headlineOptions", "bodyText", "captionText", "hashtags", "callToAction", "imagePrompt"]
     }
@@ -9423,7 +9392,7 @@ STRICT COMPLIANCE:
     checkDuplicate: true,
     checkFrequencyLimit: false
   });
-  const id = import_node_crypto11.default.randomUUID();
+  const id = crypto11.randomUUID();
   const now = (/* @__PURE__ */ new Date()).toISOString();
   db.prepare(
     `INSERT INTO generated_content (
@@ -9471,7 +9440,7 @@ function listGeneratedContent(db, workspaceId) {
 }
 
 // server/ai/modules/captionWriting.ts
-var import_genai8 = require("@google/genai");
+import { Type as Type7 } from "@google/genai";
 async function runCaptionWritingModule(db, params) {
   const ctx = loadPermittedWorkspaceContext(db, params.workspaceId);
   const charLimit = getPlatformCharLimit(params.platformKey);
@@ -9494,13 +9463,13 @@ ${socialContextBlock}`;
     systemInstruction: "You write scroll-stopping, authentic social captions tailored to each platform format.",
     prompt,
     responseSchema: {
-      type: import_genai8.Type.OBJECT,
+      type: Type7.OBJECT,
       properties: {
-        primaryCaption: { type: import_genai8.Type.STRING },
-        shortCaption: { type: import_genai8.Type.STRING },
-        storytellingCaption: { type: import_genai8.Type.STRING },
-        callToAction: { type: import_genai8.Type.STRING },
-        hashtags: { type: import_genai8.Type.ARRAY, items: { type: import_genai8.Type.STRING } }
+        primaryCaption: { type: Type7.STRING },
+        shortCaption: { type: Type7.STRING },
+        storytellingCaption: { type: Type7.STRING },
+        callToAction: { type: Type7.STRING },
+        hashtags: { type: Type7.ARRAY, items: { type: Type7.STRING } }
       },
       required: ["primaryCaption", "shortCaption", "storytellingCaption", "callToAction", "hashtags"]
     }
@@ -9513,7 +9482,7 @@ ${socialContextBlock}`;
 }
 
 // server/ai/modules/hashtagRecommendations.ts
-var import_genai9 = require("@google/genai");
+import { Type as Type8 } from "@google/genai";
 async function runHashtagRecommendationsModule(db, params) {
   const ctx = loadPermittedWorkspaceContext(db, params.workspaceId);
   const prompt = `Recommend relevant, non-spammy hashtags for ${params.platformKey.toUpperCase()}.
@@ -9529,13 +9498,13 @@ Do NOT invent fake search volume numbers.`;
     systemInstruction: "You are a social discovery strategist recommending high-signal, platform-appropriate hashtags.",
     prompt,
     responseSchema: {
-      type: import_genai9.Type.OBJECT,
+      type: Type8.OBJECT,
       properties: {
-        broadTags: { type: import_genai9.Type.ARRAY, items: { type: import_genai9.Type.STRING } },
-        nicheTags: { type: import_genai9.Type.ARRAY, items: { type: import_genai9.Type.STRING } },
-        brandedTags: { type: import_genai9.Type.ARRAY, items: { type: import_genai9.Type.STRING } },
-        recommendedSet: { type: import_genai9.Type.ARRAY, items: { type: import_genai9.Type.STRING } },
-        platformGuidance: { type: import_genai9.Type.STRING }
+        broadTags: { type: Type8.ARRAY, items: { type: Type8.STRING } },
+        nicheTags: { type: Type8.ARRAY, items: { type: Type8.STRING } },
+        brandedTags: { type: Type8.ARRAY, items: { type: Type8.STRING } },
+        recommendedSet: { type: Type8.ARRAY, items: { type: Type8.STRING } },
+        platformGuidance: { type: Type8.STRING }
       },
       required: ["broadTags", "nicheTags", "brandedTags", "recommendedSet", "platformGuidance"]
     }
@@ -9551,7 +9520,7 @@ Do NOT invent fake search volume numbers.`;
 }
 
 // server/ai/modules/keywordResearch.ts
-var import_genai10 = require("@google/genai");
+import { Type as Type9 } from "@google/genai";
 async function runKeywordResearchModule(db, params) {
   const ctx = loadPermittedWorkspaceContext(db, params.workspaceId);
   const prompt = `Provide structured social search and SEO keyword research assistance for ${params.platformKey.toUpperCase()}.
@@ -9567,24 +9536,24 @@ IMPORTANT: Do NOT invent monthly search volume numbers or CPC estimates; clearly
     systemInstruction: "You are a search and social discovery strategist providing honest, qualitative keyword clusters.",
     prompt,
     responseSchema: {
-      type: import_genai10.Type.OBJECT,
+      type: Type9.OBJECT,
       properties: {
-        primaryKeywords: { type: import_genai10.Type.ARRAY, items: { type: import_genai10.Type.STRING } },
-        longTailPhrases: { type: import_genai10.Type.ARRAY, items: { type: import_genai10.Type.STRING } },
-        questionQueries: { type: import_genai10.Type.ARRAY, items: { type: import_genai10.Type.STRING } },
+        primaryKeywords: { type: Type9.ARRAY, items: { type: Type9.STRING } },
+        longTailPhrases: { type: Type9.ARRAY, items: { type: Type9.STRING } },
+        questionQueries: { type: Type9.ARRAY, items: { type: Type9.STRING } },
         contentAngles: {
-          type: import_genai10.Type.ARRAY,
+          type: Type9.ARRAY,
           items: {
-            type: import_genai10.Type.OBJECT,
+            type: Type9.OBJECT,
             properties: {
-              keyword: { type: import_genai10.Type.STRING },
-              intent: { type: import_genai10.Type.STRING, enum: ["informational", "commercial", "transactional", "navigational"] },
-              suggestedHook: { type: import_genai10.Type.STRING }
+              keyword: { type: Type9.STRING },
+              intent: { type: Type9.STRING, enum: ["informational", "commercial", "transactional", "navigational"] },
+              suggestedHook: { type: Type9.STRING }
             },
             required: ["keyword", "intent", "suggestedHook"]
           }
         },
-        caveat: { type: import_genai10.Type.STRING }
+        caveat: { type: Type9.STRING }
       },
       required: ["primaryKeywords", "longTailPhrases", "questionQueries", "contentAngles", "caveat"]
     }
@@ -9596,7 +9565,7 @@ IMPORTANT: Do NOT invent monthly search volume numbers or CPC estimates; clearly
 }
 
 // server/ai/modules/graphicDesignAssistance.ts
-var import_genai11 = require("@google/genai");
+import { Type as Type10 } from "@google/genai";
 async function runGraphicDesignAssistanceModule(db, params) {
   const ctx = loadPermittedWorkspaceContext(db, params.workspaceId);
   const prompt = `Create an enterprise graphic design blueprint and detailed image generation prompt.
@@ -9618,17 +9587,17 @@ Produce sharp, scannable flyer/graphic copy (headline <= 60 chars, subheadline <
     systemInstruction: "You are an Executive Creative Director designing high-impact social media flyers, banners, carousels, and infographics.",
     prompt,
     responseSchema: {
-      type: import_genai11.Type.OBJECT,
+      type: Type10.OBJECT,
       properties: {
-        headline: { type: import_genai11.Type.STRING },
-        subheadline: { type: import_genai11.Type.STRING },
-        callToAction: { type: import_genai11.Type.STRING },
-        layoutStyle: { type: import_genai11.Type.STRING },
-        visualElements: { type: import_genai11.Type.ARRAY, items: { type: import_genai11.Type.STRING } },
-        colorPalette: { type: import_genai11.Type.ARRAY, items: { type: import_genai11.Type.STRING } },
-        typographyNotes: { type: import_genai11.Type.STRING },
-        imagePrompt: { type: import_genai11.Type.STRING },
-        suggestedCaption: { type: import_genai11.Type.STRING }
+        headline: { type: Type10.STRING },
+        subheadline: { type: Type10.STRING },
+        callToAction: { type: Type10.STRING },
+        layoutStyle: { type: Type10.STRING },
+        visualElements: { type: Type10.ARRAY, items: { type: Type10.STRING } },
+        colorPalette: { type: Type10.ARRAY, items: { type: Type10.STRING } },
+        typographyNotes: { type: Type10.STRING },
+        imagePrompt: { type: Type10.STRING },
+        suggestedCaption: { type: Type10.STRING }
       },
       required: [
         "headline",
@@ -9650,9 +9619,9 @@ Produce sharp, scannable flyer/graphic copy (headline <= 60 chars, subheadline <
 }
 
 // server/ai/modules/imageGeneration.ts
-var import_node_crypto12 = __toESM(require("node:crypto"), 1);
-var import_node_fs3 = __toESM(require("node:fs"), 1);
-var import_node_path3 = __toESM(require("node:path"), 1);
+import crypto12 from "node:crypto";
+import fs3 from "node:fs";
+import path3 from "node:path";
 var imageTestTransportOverride = null;
 function mapGeneratedImageRow(r) {
   return {
@@ -9688,15 +9657,15 @@ function getImageGenerationCapabilities() {
 }
 function getGeneratedMediaRootDir() {
   const isServerless = process.env.VERCEL === "1" || process.env.AWS_LAMBDA_FUNCTION_VERSION !== void 0;
-  return isServerless ? "/tmp/livingtech-generated" : import_node_path3.default.resolve(process.cwd(), "public", "generated");
+  return isServerless ? "/tmp/livingtech-generated" : path3.resolve(process.cwd(), "public", "generated");
 }
 function saveImageBufferToWorkspacePublic(workspaceId, ext, buffer) {
-  const fileName = `graphic-${Date.now()}-${import_node_crypto12.default.randomBytes(4).toString("hex")}.${ext}`;
-  const relDir = import_node_path3.default.join("generated", workspaceId);
-  const absDir = import_node_path3.default.join(getGeneratedMediaRootDir(), workspaceId);
-  import_node_fs3.default.mkdirSync(absDir, { recursive: true });
-  const absPath = import_node_path3.default.join(absDir, fileName);
-  import_node_fs3.default.writeFileSync(absPath, buffer);
+  const fileName = `graphic-${Date.now()}-${crypto12.randomBytes(4).toString("hex")}.${ext}`;
+  const relDir = path3.join("generated", workspaceId);
+  const absDir = path3.join(getGeneratedMediaRootDir(), workspaceId);
+  fs3.mkdirSync(absDir, { recursive: true });
+  const absPath = path3.join(absDir, fileName);
+  fs3.writeFileSync(absPath, buffer);
   return {
     storagePath: absPath,
     publicUrl: `/${relDir}/${fileName}`
@@ -9709,7 +9678,7 @@ async function runImageGenerationModule(db, params) {
   if (!ws || ws.ai_credits_balance < cost) {
     throw new Error(`Insufficient AI credits. Live image generation requires ${cost} credits.`);
   }
-  const imageId = import_node_crypto12.default.randomUUID();
+  const imageId = crypto12.randomUUID();
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const startedAt = Date.now();
   const recordFailure = (errorMessage) => {
@@ -9742,7 +9711,7 @@ async function runImageGenerationModule(db, params) {
           id, workspace_id, user_id, module_key, model_name, credits_used,
           prompt_tokens, completion_tokens, status, error_message, latency_ms, created_at
         ) VALUES (?, ?, ?, 'image_generation', 'external_image_service', 0, 0, 0, 'failed', ?, ?, ?)`
-      ).run(import_node_crypto12.default.randomUUID(), params.workspaceId, params.userId, errorMessage, Date.now() - startedAt, now);
+      ).run(crypto12.randomUUID(), params.workspaceId, params.userId, errorMessage, Date.now() - startedAt, now);
     })();
     const failedRow = db.prepare("SELECT * FROM generated_images WHERE id = ?").get(imageId);
     return {
@@ -9795,7 +9764,7 @@ async function runImageGenerationModule(db, params) {
     }
     const ext = mimeType.includes("jpeg") || mimeType.includes("jpg") ? "jpg" : "png";
     const saved = saveImageBufferToWorkspacePublic(params.workspaceId, ext, generatedBuffer);
-    const mediaId = import_node_crypto12.default.randomUUID();
+    const mediaId = crypto12.randomUUID();
     const fileName = `${params.graphicType}-${preset.id.replace(":", "x")}-${Date.now()}.${ext}`;
     db.transaction(() => {
       db.prepare("UPDATE workspaces SET ai_credits_balance = ai_credits_balance - ?, updated_at = ? WHERE id = ?").run(
@@ -9848,7 +9817,7 @@ async function runImageGenerationModule(db, params) {
           id, workspace_id, user_id, module_key, model_name, credits_used,
           prompt_tokens, completion_tokens, status, error_message, latency_ms, created_at
         ) VALUES (?, ?, ?, 'image_generation', ?, ?, 0, 0, 'completed', NULL, ?, ?)`
-      ).run(import_node_crypto12.default.randomUUID(), params.workspaceId, params.userId, modelName, cost, Date.now() - startedAt, now);
+      ).run(crypto12.randomUUID(), params.workspaceId, params.userId, modelName, cost, Date.now() - startedAt, now);
     })();
     const updatedWs = db.prepare("SELECT ai_credits_balance FROM workspaces WHERE id = ?").get(params.workspaceId);
     const stored = db.prepare("SELECT * FROM generated_images WHERE id = ?").get(imageId);
@@ -9871,8 +9840,8 @@ function saveRenderedGraphicToLibrary(db, params) {
   const preset = GRAPHIC_ASPECT_PRESETS.find((p) => p.id === params.aspectRatio) ?? GRAPHIC_ASPECT_PRESETS[0];
   const ext = mimeType.includes("jpeg") ? "jpg" : mimeType.includes("webp") ? "webp" : "png";
   const saved = saveImageBufferToWorkspacePublic(params.workspaceId, ext, buffer);
-  const mediaId = import_node_crypto12.default.randomUUID();
-  const imageId = import_node_crypto12.default.randomUUID();
+  const mediaId = crypto12.randomUUID();
+  const imageId = crypto12.randomUUID();
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const safeFileName = (params.fileName || `${params.graphicType}-${preset.id.replace(":", "x")}.${ext}`).slice(0, 120);
   db.transaction(() => {
@@ -9915,7 +9884,7 @@ function listGeneratedImages(db, workspaceId) {
 }
 
 // server/ai/modules/videoScripting.ts
-var import_genai12 = require("@google/genai");
+import { Type as Type11 } from "@google/genai";
 async function runVideoScriptingModule(db, params) {
   const ctx = loadPermittedWorkspaceContext(db, params.workspaceId);
   const prompt = `Write a production-ready video script and scene breakdown for ${params.platformKey.toUpperCase()}.
@@ -9936,35 +9905,35 @@ Include a strong first-3-second hook, timestamped scenes (visual, voiceover, onS
     systemInstruction: "You are a commercial video director crafting high-retention social video scripts.",
     prompt,
     responseSchema: {
-      type: import_genai12.Type.OBJECT,
+      type: Type11.OBJECT,
       properties: {
-        title: { type: import_genai12.Type.STRING },
-        conceptSummary: { type: import_genai12.Type.STRING },
+        title: { type: Type11.STRING },
+        conceptSummary: { type: Type11.STRING },
         script: {
-          type: import_genai12.Type.OBJECT,
+          type: Type11.OBJECT,
           properties: {
-            hook: { type: import_genai12.Type.STRING },
-            durationSeconds: { type: import_genai12.Type.INTEGER },
+            hook: { type: Type11.STRING },
+            durationSeconds: { type: Type11.INTEGER },
             scenes: {
-              type: import_genai12.Type.ARRAY,
+              type: Type11.ARRAY,
               items: {
-                type: import_genai12.Type.OBJECT,
+                type: Type11.OBJECT,
                 properties: {
-                  timestamp: { type: import_genai12.Type.STRING },
-                  visual: { type: import_genai12.Type.STRING },
-                  voiceover: { type: import_genai12.Type.STRING },
-                  onScreenText: { type: import_genai12.Type.STRING }
+                  timestamp: { type: Type11.STRING },
+                  visual: { type: Type11.STRING },
+                  voiceover: { type: Type11.STRING },
+                  onScreenText: { type: Type11.STRING }
                 },
                 required: ["timestamp", "visual", "voiceover", "onScreenText"]
               }
             },
-            callToAction: { type: import_genai12.Type.STRING },
-            bRollIdeas: { type: import_genai12.Type.ARRAY, items: { type: import_genai12.Type.STRING } }
+            callToAction: { type: Type11.STRING },
+            bRollIdeas: { type: Type11.ARRAY, items: { type: Type11.STRING } }
           },
           required: ["hook", "durationSeconds", "scenes", "callToAction", "bRollIdeas"]
         },
-        captionIdea: { type: import_genai12.Type.STRING },
-        hashtags: { type: import_genai12.Type.ARRAY, items: { type: import_genai12.Type.STRING } }
+        captionIdea: { type: Type11.STRING },
+        hashtags: { type: Type11.ARRAY, items: { type: Type11.STRING } }
       },
       required: ["title", "conceptSummary", "script", "captionIdea", "hashtags"]
     }
@@ -9976,7 +9945,7 @@ Include a strong first-3-second hook, timestamped scenes (visual, voiceover, onS
 }
 
 // server/ai/modules/contentRepurposing.ts
-var import_genai13 = require("@google/genai");
+import { Type as Type12 } from "@google/genai";
 async function runContentRepurposingModule(db, params) {
   const ctx = loadPermittedWorkspaceContext(db, params.workspaceId);
   const platformSpecs = params.targetPlatforms.map((p) => `- ${p}: max ${getPlatformCharLimit(p)} chars (${p === "tiktok" ? "short-form video script & caption" : p === "youtube" ? "video title & SEO description" : p === "x" ? "punchy micro-post under 250 chars" : p === "linkedin" ? "executive professional post" : p === "instagram" ? "visual caption + hook" : "platform-native post"})`).join("\n");
@@ -10000,22 +9969,22 @@ Return one tailored variant for every requested target platform. Respect every c
     systemInstruction: "You are an omnichannel brand editor transforming a single message into native, high-performing posts for each social network.",
     prompt,
     responseSchema: {
-      type: import_genai13.Type.OBJECT,
+      type: Type12.OBJECT,
       properties: {
         variants: {
-          type: import_genai13.Type.ARRAY,
+          type: Type12.ARRAY,
           items: {
-            type: import_genai13.Type.OBJECT,
+            type: Type12.OBJECT,
             properties: {
               platformKey: {
-                type: import_genai13.Type.STRING,
+                type: Type12.STRING,
                 enum: ["facebook", "instagram", "tiktok", "linkedin", "youtube", "x", "pinterest", "google_business"]
               },
-              format: { type: import_genai13.Type.STRING },
-              headline: { type: import_genai13.Type.STRING },
-              body: { type: import_genai13.Type.STRING },
-              hashtags: { type: import_genai13.Type.ARRAY, items: { type: import_genai13.Type.STRING } },
-              callToAction: { type: import_genai13.Type.STRING }
+              format: { type: Type12.STRING },
+              headline: { type: Type12.STRING },
+              body: { type: Type12.STRING },
+              hashtags: { type: Type12.ARRAY, items: { type: Type12.STRING } },
+              callToAction: { type: Type12.STRING }
             },
             required: ["platformKey", "format", "headline", "body", "hashtags", "callToAction"]
           }
@@ -10048,7 +10017,7 @@ ${cleanTags.join(" ")}`.trim().length,
 }
 
 // server/ai/modules/performanceRecommendations.ts
-var import_genai14 = require("@google/genai");
+import { Type as Type13 } from "@google/genai";
 async function runPerformanceRecommendationsModule(db, params) {
   const ctx = loadPermittedWorkspaceContext(db, params.workspaceId);
   const hasLiveData = ctx.liveAnalytics.length > 0;
@@ -10071,24 +10040,24 @@ Live Analytics Snapshots: ${hasLiveData ? JSON.stringify(ctx.liveAnalytics) : "N
       systemInstruction: "You are a data-honest growth analyst. Never fabricate performance figures.",
       prompt,
       responseSchema: {
-        type: import_genai14.Type.OBJECT,
+        type: Type13.OBJECT,
         properties: {
-          dataBasisSummary: { type: import_genai14.Type.STRING },
-          keyObservations: { type: import_genai14.Type.ARRAY, items: { type: import_genai14.Type.STRING } },
+          dataBasisSummary: { type: Type13.STRING },
+          keyObservations: { type: Type13.ARRAY, items: { type: Type13.STRING } },
           actionableRecommendations: {
-            type: import_genai14.Type.ARRAY,
+            type: Type13.ARRAY,
             items: {
-              type: import_genai14.Type.OBJECT,
+              type: Type13.OBJECT,
               properties: {
-                title: { type: import_genai14.Type.STRING },
-                rationale: { type: import_genai14.Type.STRING },
-                priority: { type: import_genai14.Type.STRING, enum: ["high", "medium", "low"] },
-                evidenceType: { type: import_genai14.Type.STRING, enum: ["observed_metric", "best_practice_hypothesis"] }
+                title: { type: Type13.STRING },
+                rationale: { type: Type13.STRING },
+                priority: { type: Type13.STRING, enum: ["high", "medium", "low"] },
+                evidenceType: { type: Type13.STRING, enum: ["observed_metric", "best_practice_hypothesis"] }
               },
               required: ["title", "rationale", "priority", "evidenceType"]
             }
           },
-          nextExperiments: { type: import_genai14.Type.ARRAY, items: { type: import_genai14.Type.STRING } }
+          nextExperiments: { type: Type13.ARRAY, items: { type: Type13.STRING } }
         },
         required: ["dataBasisSummary", "keyObservations", "actionableRecommendations", "nextExperiments"]
       }
@@ -10102,8 +10071,8 @@ Live Analytics Snapshots: ${hasLiveData ? JSON.stringify(ctx.liveAnalytics) : "N
 }
 
 // server/ai/modules/commentReplyDrafting.ts
-var import_genai15 = require("@google/genai");
-var import_node_crypto13 = __toESM(require("node:crypto"), 1);
+import { Type as Type14 } from "@google/genai";
+import crypto13 from "node:crypto";
 var SENSITIVE_ESCALATION_PATTERNS = [
   /\b(lawsuit|legal|attorney|lawyer|sue|gdpr|data\s+breach|hacked|fraud|scam)\b/i,
   /\b(refund|chargeback|unauthorized\s+charge|billing\s+error|cancel\s+my\s+subscription)\b/i,
@@ -10156,13 +10125,13 @@ Set escalationRecommended=true if the message involves refunds, legal threats, p
     systemInstruction: "You are a senior community manager drafting compliant, empathetic, on-brand replies. Never make unauthorized refund or legal promises.",
     prompt,
     responseSchema: {
-      type: import_genai15.Type.OBJECT,
+      type: Type14.OBJECT,
       properties: {
-        suggestedReply: { type: import_genai15.Type.STRING },
-        tone: { type: import_genai15.Type.STRING },
-        confidenceNote: { type: import_genai15.Type.STRING },
-        escalationRecommended: { type: import_genai15.Type.BOOLEAN },
-        escalationReason: { type: import_genai15.Type.STRING }
+        suggestedReply: { type: Type14.STRING },
+        tone: { type: Type14.STRING },
+        confidenceNote: { type: Type14.STRING },
+        escalationRecommended: { type: Type14.BOOLEAN },
+        escalationReason: { type: Type14.STRING }
       },
       required: ["suggestedReply", "tone", "confidenceNote", "escalationRecommended", "escalationReason"]
     }
@@ -10176,7 +10145,7 @@ Set escalationRecommended=true if the message involves refunds, legal threats, p
     checkDuplicate: false,
     checkFrequencyLimit: false
   });
-  const id = import_node_crypto13.default.randomUUID();
+  const id = crypto13.randomUUID();
   const now = (/* @__PURE__ */ new Date()).toISOString();
   db.transaction(() => {
     db.prepare(
@@ -10215,7 +10184,7 @@ Set escalationRecommended=true if the message involves refunds, legal threats, p
 }
 
 // server/queue/publishingWorker.ts
-var import_node_crypto14 = __toESM(require("node:crypto"), 1);
+import crypto14 from "node:crypto";
 
 // server/services/publishingValidationService.ts
 function validatePostForPlatform(params) {
@@ -10279,7 +10248,7 @@ function validatePostForPlatform(params) {
 var publishExecutorOverride = null;
 var embeddedWorkerTimer = null;
 var lastWorkerTickAt = null;
-var WORKER_INSTANCE_ID = `lt-worker-${process.pid}-${import_node_crypto14.default.randomBytes(3).toString("hex")}`;
+var WORKER_INSTANCE_ID = `lt-worker-${process.pid}-${crypto14.randomBytes(3).toString("hex")}`;
 function mapPublishingQueueRow(r) {
   return {
     id: String(r.id),
@@ -10365,7 +10334,7 @@ function createWorkspaceNotification(db, params) {
   db.prepare(
     `INSERT INTO notifications (id, workspace_id, user_id, category, title, body, is_read, created_at, updated_at)
      VALUES (?, ?, ?, 'publishing', ?, ?, 0, ?, ?)`
-  ).run(import_node_crypto14.default.randomUUID(), params.workspaceId, params.userId, params.title, params.body, now, now);
+  ).run(crypto14.randomUUID(), params.workspaceId, params.userId, params.title, params.body, now, now);
 }
 function enqueuePublishingJob(db, params) {
   const cleanTags = normalizeHashtags(params.hashtags || []);
@@ -10429,7 +10398,7 @@ function enqueuePublishingJob(db, params) {
   const recurrenceRule = params.recurrenceRule ?? { type: "none" };
   const recurrenceType = recurrenceRule.type || "none";
   const contentHash = computeContentHash(params.bodyText, finalHashtags);
-  const idempotencyKey = params.idempotencyKey?.trim() || import_node_crypto14.default.createHash("sha256").update(`${params.workspaceId}:${params.socialAccountId || params.platformKey}:${contentHash}:${scheduledUtcIso}`).digest("hex").slice(0, 48);
+  const idempotencyKey = params.idempotencyKey?.trim() || crypto14.createHash("sha256").update(`${params.workspaceId}:${params.socialAccountId || params.platformKey}:${contentHash}:${scheduledUtcIso}`).digest("hex").slice(0, 48);
   const existingJob = db.prepare(
     `SELECT pq.*, sa.account_name, sa.account_handle
        FROM publishing_queue pq
@@ -10444,13 +10413,13 @@ function enqueuePublishingJob(db, params) {
     };
   }
   const now = (/* @__PURE__ */ new Date()).toISOString();
-  const queueId = import_node_crypto14.default.randomUUID();
-  const calendarItemId = import_node_crypto14.default.randomUUID();
-  const approvalId = requiresApproval && !params.saveAsDraft ? import_node_crypto14.default.randomUUID() : null;
+  const queueId = crypto14.randomUUID();
+  const calendarItemId = crypto14.randomUUID();
+  const approvalId = requiresApproval && !params.saveAsDraft ? crypto14.randomUUID() : null;
   let contentPostId = params.contentPostId ?? null;
   db.transaction(() => {
     if (!contentPostId) {
-      contentPostId = import_node_crypto14.default.randomUUID();
+      contentPostId = crypto14.randomUUID();
       const legacyStatus = initialStatus === "draft" ? "draft" : initialStatus === "awaiting_approval" ? "pending" : "scheduled";
       db.prepare(
         `INSERT INTO content_posts (
@@ -10702,7 +10671,7 @@ async function executePublishingQueueJob(db, queueId, options) {
   }
   const job = loadJob();
   const attemptNumber = job.attemptCount + 1;
-  const attemptId = import_node_crypto14.default.randomUUID();
+  const attemptId = crypto14.randomUUID();
   db.prepare(
     `INSERT INTO publishing_attempts (
       id, queue_id, workspace_id, social_account_id, platform_key, attempt_number,
@@ -10883,7 +10852,7 @@ async function executePublishingQueueJob(db, queueId, options) {
       account: { externalAccountId, capabilities },
       payload
     }) : isSandboxAccount ? (() => {
-      const externalPostId = `sandbox_${job.platformKey}_${import_node_crypto14.default.randomBytes(6).toString("hex")}`;
+      const externalPostId = `sandbox_${job.platformKey}_${crypto14.randomBytes(6).toString("hex")}`;
       return {
         externalPostId,
         permalink: buildSandboxPermalink(job.platformKey, externalPostId),
@@ -11122,7 +11091,7 @@ function getWorkerHealth(db, workspaceId) {
 }
 
 // server/routes/phase3.ts
-var PlatformKeySchema2 = import_zod3.z.enum([
+var PlatformKeySchema2 = z3.enum([
   "facebook",
   "instagram",
   "tiktok",
@@ -11132,8 +11101,8 @@ var PlatformKeySchema2 = import_zod3.z.enum([
   "pinterest",
   "google_business"
 ]);
-var FormatKeySchema = import_zod3.z.enum(["text", "image", "video", "carousel", "story", "reels", "short_form_video"]);
-var ContentTypeSchema = import_zod3.z.enum([
+var FormatKeySchema = z3.enum(["text", "image", "video", "carousel", "story", "reels", "short_form_video"]);
+var ContentTypeSchema = z3.enum([
   "social_post",
   "caption",
   "promotional",
@@ -11149,7 +11118,7 @@ var ContentTypeSchema = import_zod3.z.enum([
   "video_script",
   "short_form_concept"
 ]);
-var GraphicTypeSchema = import_zod3.z.enum([
+var GraphicTypeSchema = z3.enum([
   "promotional_flyer",
   "product_announcement",
   "event_banner",
@@ -11159,13 +11128,13 @@ var GraphicTypeSchema = import_zod3.z.enum([
   "sale_announcement",
   "educational_infographic"
 ]);
-var RecurrenceRuleSchema = import_zod3.z.object({
-  type: import_zod3.z.enum(["none", "daily", "weekdays", "weekly", "monthly", "custom"]).default("none"),
-  weekdays: import_zod3.z.array(import_zod3.z.number().int().min(0).max(6)).optional(),
-  dayOfMonth: import_zod3.z.number().int().min(1).max(28).optional(),
-  customDates: import_zod3.z.array(import_zod3.z.string()).optional(),
-  endDate: import_zod3.z.string().nullable().optional(),
-  maxOccurrences: import_zod3.z.number().int().min(1).max(100).optional()
+var RecurrenceRuleSchema = z3.object({
+  type: z3.enum(["none", "daily", "weekdays", "weekly", "monthly", "custom"]).default("none"),
+  weekdays: z3.array(z3.number().int().min(0).max(6)).optional(),
+  dayOfMonth: z3.number().int().min(1).max(28).optional(),
+  customDates: z3.array(z3.string()).optional(),
+  endDate: z3.string().nullable().optional(),
+  maxOccurrences: z3.number().int().min(1).max(100).optional()
 });
 function extractToken2(req) {
   const authHeader = req.headers.authorization;
@@ -11176,7 +11145,7 @@ function extractToken2(req) {
   return cookieToken || null;
 }
 function handleError(res, err, status = 400) {
-  if (err instanceof import_zod3.z.ZodError) {
+  if (err instanceof z3.ZodError) {
     return res.status(400).json({
       error: err.issues[0]?.message || "Invalid input parameters.",
       details: err.flatten().fieldErrors
@@ -11229,7 +11198,7 @@ function mapCalendarRow(r) {
   };
 }
 function createPhase3Router(db) {
-  const router = (0, import_express2.Router)();
+  const router = Router2();
   const requireAuth = (req, res, next) => {
     const token = extractToken2(req);
     if (!token) return res.status(401).json({ error: "Authentication required." });
@@ -11295,24 +11264,24 @@ function createPhase3Router(db) {
   router.patch("/workspaces/:wid/brand-intelligence", requireAuth, requireWorkspaceMember, (req, res) => {
     try {
       const wid = String(req.params.wid);
-      const body = import_zod3.z.object({
-        brandName: import_zod3.z.string().min(1).max(120).optional(),
-        logoUrl: import_zod3.z.string().max(512).optional(),
-        primaryColor: import_zod3.z.string().max(16).optional(),
-        secondaryColor: import_zod3.z.string().max(16).optional(),
-        accentColor: import_zod3.z.string().max(16).optional(),
-        businessDescription: import_zod3.z.string().max(3e3).optional(),
-        industry: import_zod3.z.string().max(120).optional(),
-        productsServices: import_zod3.z.string().max(3e3).optional(),
-        targetAudience: import_zod3.z.string().max(1500).optional(),
-        businessGoals: import_zod3.z.string().max(1500).optional(),
-        toneOfVoice: import_zod3.z.string().max(240).optional(),
-        preferredLanguage: import_zod3.z.string().max(24).optional(),
-        timezone: import_zod3.z.string().max(64).optional(),
-        bannedWords: import_zod3.z.array(import_zod3.z.string().max(64)).max(100).optional(),
-        brandToneRules: import_zod3.z.string().max(2e3).optional(),
-        maxPostsPerDay: import_zod3.z.number().int().min(1).max(100).optional(),
-        autoReplyEnabled: import_zod3.z.boolean().optional()
+      const body = z3.object({
+        brandName: z3.string().min(1).max(120).optional(),
+        logoUrl: z3.string().max(512).optional(),
+        primaryColor: z3.string().max(16).optional(),
+        secondaryColor: z3.string().max(16).optional(),
+        accentColor: z3.string().max(16).optional(),
+        businessDescription: z3.string().max(3e3).optional(),
+        industry: z3.string().max(120).optional(),
+        productsServices: z3.string().max(3e3).optional(),
+        targetAudience: z3.string().max(1500).optional(),
+        businessGoals: z3.string().max(1500).optional(),
+        toneOfVoice: z3.string().max(240).optional(),
+        preferredLanguage: z3.string().max(24).optional(),
+        timezone: z3.string().max(64).optional(),
+        bannedWords: z3.array(z3.string().max(64)).max(100).optional(),
+        brandToneRules: z3.string().max(2e3).optional(),
+        maxPostsPerDay: z3.number().int().min(1).max(100).optional(),
+        autoReplyEnabled: z3.boolean().optional()
       }).parse(req.body);
       const current = loadWorkspaceBrandProfile(db, wid);
       const now = (/* @__PURE__ */ new Date()).toISOString();
@@ -11361,15 +11330,15 @@ function createPhase3Router(db) {
   router.post("/workspaces/:wid/brand-intelligence/documents", requireAuth, requireWorkspaceMember, (req, res) => {
     try {
       const wid = String(req.params.wid);
-      const body = import_zod3.z.object({
-        name: import_zod3.z.string().min(1).max(160),
-        category: import_zod3.z.enum(["brand_guide", "product_catalog", "marketing_material", "logo", "product_image", "other"]),
-        summary: import_zod3.z.string().min(3).max(4e3),
-        url: import_zod3.z.string().max(1024).optional()
+      const body = z3.object({
+        name: z3.string().min(1).max(160),
+        category: z3.enum(["brand_guide", "product_catalog", "marketing_material", "logo", "product_image", "other"]),
+        summary: z3.string().min(3).max(4e3),
+        url: z3.string().max(1024).optional()
       }).parse(req.body);
       const current = loadWorkspaceBrandProfile(db, wid);
       const doc = {
-        id: import_node_crypto15.default.randomUUID(),
+        id: crypto15.randomUUID(),
         name: body.name.trim(),
         category: body.category,
         summary: body.summary.trim(),
@@ -11406,7 +11375,7 @@ function createPhase3Router(db) {
   router.post("/workspaces/:wid/ai/brand-analysis", requireAuth, requireWorkspaceMember, async (req, res) => {
     try {
       const wid = String(req.params.wid);
-      const body = import_zod3.z.object({ additionalNotes: import_zod3.z.string().max(2e3).optional() }).parse(req.body || {});
+      const body = z3.object({ additionalNotes: z3.string().max(2e3).optional() }).parse(req.body || {});
       const result = await runBrandAnalysisModule(db, {
         workspaceId: wid,
         userId: req.user.id,
@@ -11420,7 +11389,7 @@ function createPhase3Router(db) {
   router.post("/workspaces/:wid/ai/audience-analysis", requireAuth, requireWorkspaceMember, async (req, res) => {
     try {
       const wid = String(req.params.wid);
-      const body = import_zod3.z.object({ focusMarket: import_zod3.z.string().max(300).optional() }).parse(req.body || {});
+      const body = z3.object({ focusMarket: z3.string().max(300).optional() }).parse(req.body || {});
       const result = await runAudienceAnalysisModule(db, {
         workspaceId: wid,
         userId: req.user.id,
@@ -11437,10 +11406,10 @@ function createPhase3Router(db) {
   router.post("/workspaces/:wid/ai/strategy-v3", requireAuth, requireWorkspaceMember, async (req, res) => {
     try {
       const wid = String(req.params.wid);
-      const body = import_zod3.z.object({
-        title: import_zod3.z.string().max(180).optional(),
-        goals: import_zod3.z.string().min(5).max(1500),
-        platforms: import_zod3.z.array(PlatformKeySchema2).min(1)
+      const body = z3.object({
+        title: z3.string().max(180).optional(),
+        goals: z3.string().min(5).max(1500),
+        platforms: z3.array(PlatformKeySchema2).min(1)
       }).parse(req.body);
       const result = await runContentStrategyModule(db, {
         workspaceId: wid,
@@ -11457,12 +11426,12 @@ function createPhase3Router(db) {
   router.post("/workspaces/:wid/ai/calendar-plan", requireAuth, requireWorkspaceMember, async (req, res) => {
     try {
       const wid = String(req.params.wid);
-      const body = import_zod3.z.object({
-        platforms: import_zod3.z.array(PlatformKeySchema2).min(1),
-        daysCount: import_zod3.z.number().int().min(3).max(14).default(7),
-        campaignObjective: import_zod3.z.string().min(3).max(500),
-        preferredPostingWindow: import_zod3.z.string().max(120).optional(),
-        timezone: import_zod3.z.string().max(64).default("UTC")
+      const body = z3.object({
+        platforms: z3.array(PlatformKeySchema2).min(1),
+        daysCount: z3.number().int().min(3).max(14).default(7),
+        campaignObjective: z3.string().min(3).max(500),
+        preferredPostingWindow: z3.string().max(120).optional(),
+        timezone: z3.string().max(64).default("UTC")
       }).parse(req.body);
       const result = await runCalendarGenerationModule(db, {
         workspaceId: wid,
@@ -11480,17 +11449,17 @@ function createPhase3Router(db) {
   router.post("/workspaces/:wid/ai/studio-generate", requireAuth, requireWorkspaceMember, async (req, res) => {
     try {
       const wid = String(req.params.wid);
-      const body = import_zod3.z.object({
+      const body = z3.object({
         platformKey: PlatformKeySchema2,
-        socialAccountId: import_zod3.z.string().nullable().optional(),
-        campaignId: import_zod3.z.string().nullable().optional(),
+        socialAccountId: z3.string().nullable().optional(),
+        campaignId: z3.string().nullable().optional(),
         contentType: ContentTypeSchema.default("social_post"),
-        topic: import_zod3.z.string().min(3).max(1500),
-        keywords: import_zod3.z.union([import_zod3.z.string(), import_zod3.z.array(import_zod3.z.string())]).optional(),
-        objective: import_zod3.z.string().min(2).max(200).default("Brand Awareness & Engagement"),
-        targetAudience: import_zod3.z.string().max(400).optional(),
-        toneOfVoice: import_zod3.z.string().max(200).optional(),
-        language: import_zod3.z.string().max(32).optional()
+        topic: z3.string().min(3).max(1500),
+        keywords: z3.union([z3.string(), z3.array(z3.string())]).optional(),
+        objective: z3.string().min(2).max(200).default("Brand Awareness & Engagement"),
+        targetAudience: z3.string().max(400).optional(),
+        toneOfVoice: z3.string().max(200).optional(),
+        language: z3.string().max(32).optional()
       }).parse(req.body);
       const keywords = Array.isArray(body.keywords) ? body.keywords : typeof body.keywords === "string" ? parseKeywordsInput(body.keywords) : [];
       const result = await runPostWritingModule(db, {
@@ -11518,13 +11487,13 @@ function createPhase3Router(db) {
       const id = String(req.params.id);
       const existing = db.prepare("SELECT * FROM generated_content WHERE id = ? AND workspace_id = ?").get(id, wid);
       if (!existing) return res.status(404).json({ error: "Generated content item not found." });
-      const body = import_zod3.z.object({
-        title: import_zod3.z.string().min(1).max(240).optional(),
-        bodyText: import_zod3.z.string().min(1).max(1e4).optional(),
-        captionText: import_zod3.z.string().max(1e4).optional(),
-        hashtags: import_zod3.z.array(import_zod3.z.string()).optional(),
-        callToAction: import_zod3.z.string().max(400).optional(),
-        imagePrompt: import_zod3.z.string().max(2e3).optional(),
+      const body = z3.object({
+        title: z3.string().min(1).max(240).optional(),
+        bodyText: z3.string().min(1).max(1e4).optional(),
+        captionText: z3.string().max(1e4).optional(),
+        hashtags: z3.array(z3.string()).optional(),
+        callToAction: z3.string().max(400).optional(),
+        imagePrompt: z3.string().max(2e3).optional(),
         platformKey: PlatformKeySchema2.optional()
       }).parse(req.body);
       const nextPlatform = body.platformKey ?? String(existing.platform_key);
@@ -11566,12 +11535,12 @@ function createPhase3Router(db) {
   });
   router.post("/workspaces/:wid/ai/caption", requireAuth, requireWorkspaceMember, async (req, res) => {
     try {
-      const body = import_zod3.z.object({
+      const body = z3.object({
         platformKey: PlatformKeySchema2,
-        subject: import_zod3.z.string().min(3).max(800),
-        visualDescription: import_zod3.z.string().max(800).optional(),
-        toneOfVoice: import_zod3.z.string().max(160).optional(),
-        language: import_zod3.z.string().max(32).optional()
+        subject: z3.string().min(3).max(800),
+        visualDescription: z3.string().max(800).optional(),
+        toneOfVoice: z3.string().max(160).optional(),
+        language: z3.string().max(32).optional()
       }).parse(req.body);
       const result = await runCaptionWritingModule(db, {
         workspaceId: String(req.params.wid),
@@ -11585,10 +11554,10 @@ function createPhase3Router(db) {
   });
   router.post("/workspaces/:wid/ai/hashtags", requireAuth, requireWorkspaceMember, async (req, res) => {
     try {
-      const body = import_zod3.z.object({
+      const body = z3.object({
         platformKey: PlatformKeySchema2,
-        topic: import_zod3.z.string().min(2).max(500),
-        language: import_zod3.z.string().max(32).optional()
+        topic: z3.string().min(2).max(500),
+        language: z3.string().max(32).optional()
       }).parse(req.body);
       const result = await runHashtagRecommendationsModule(db, {
         workspaceId: String(req.params.wid),
@@ -11602,10 +11571,10 @@ function createPhase3Router(db) {
   });
   router.post("/workspaces/:wid/ai/keywords", requireAuth, requireWorkspaceMember, async (req, res) => {
     try {
-      const body = import_zod3.z.object({
+      const body = z3.object({
         platformKey: PlatformKeySchema2,
-        seedTopic: import_zod3.z.string().min(2).max(500),
-        language: import_zod3.z.string().max(32).optional()
+        seedTopic: z3.string().min(2).max(500),
+        language: z3.string().max(32).optional()
       }).parse(req.body);
       const result = await runKeywordResearchModule(db, {
         workspaceId: String(req.params.wid),
@@ -11628,12 +11597,12 @@ function createPhase3Router(db) {
   });
   router.post("/workspaces/:wid/ai/graphic-direction", requireAuth, requireWorkspaceMember, async (req, res) => {
     try {
-      const body = import_zod3.z.object({
+      const body = z3.object({
         graphicType: GraphicTypeSchema,
         platformKey: PlatformKeySchema2,
-        aspectRatio: import_zod3.z.string().min(2).max(16).default("1:1"),
-        brief: import_zod3.z.string().min(3).max(1500),
-        includeLogo: import_zod3.z.boolean().optional()
+        aspectRatio: z3.string().min(2).max(16).default("1:1"),
+        brief: z3.string().min(3).max(1500),
+        includeLogo: z3.boolean().optional()
       }).parse(req.body);
       const result = await runGraphicDesignAssistanceModule(db, {
         workspaceId: String(req.params.wid),
@@ -11647,14 +11616,14 @@ function createPhase3Router(db) {
   });
   router.post("/workspaces/:wid/ai/generate-image", requireAuth, requireWorkspaceMember, async (req, res) => {
     try {
-      const body = import_zod3.z.object({
+      const body = z3.object({
         graphicType: GraphicTypeSchema,
         platformKey: PlatformKeySchema2,
-        aspectRatio: import_zod3.z.string().min(2).max(16).default("1:1"),
-        prompt: import_zod3.z.string().min(5).max(2e3),
-        artDirection: import_zod3.z.record(import_zod3.z.string(), import_zod3.z.unknown()).optional(),
-        captionText: import_zod3.z.string().max(3e3).optional(),
-        generatedContentId: import_zod3.z.string().nullable().optional()
+        aspectRatio: z3.string().min(2).max(16).default("1:1"),
+        prompt: z3.string().min(5).max(2e3),
+        artDirection: z3.record(z3.string(), z3.unknown()).optional(),
+        captionText: z3.string().max(3e3).optional(),
+        generatedContentId: z3.string().nullable().optional()
       }).parse(req.body);
       const result = await runImageGenerationModule(db, {
         workspaceId: String(req.params.wid),
@@ -11674,16 +11643,16 @@ function createPhase3Router(db) {
   });
   router.post("/workspaces/:wid/ai/graphics/save-rendered", requireAuth, requireWorkspaceMember, (req, res) => {
     try {
-      const body = import_zod3.z.object({
+      const body = z3.object({
         graphicType: GraphicTypeSchema,
         platformKey: PlatformKeySchema2,
-        aspectRatio: import_zod3.z.string().min(2).max(16).default("1:1"),
-        prompt: import_zod3.z.string().max(2e3).default("Branded social graphic"),
-        artDirection: import_zod3.z.record(import_zod3.z.string(), import_zod3.z.unknown()).optional(),
-        captionText: import_zod3.z.string().max(3e3).optional(),
-        sourceMode: import_zod3.z.enum(["compositor", "uploaded"]).default("compositor"),
-        dataUrl: import_zod3.z.string().min(30),
-        fileName: import_zod3.z.string().max(120).optional()
+        aspectRatio: z3.string().min(2).max(16).default("1:1"),
+        prompt: z3.string().max(2e3).default("Branded social graphic"),
+        artDirection: z3.record(z3.string(), z3.unknown()).optional(),
+        captionText: z3.string().max(3e3).optional(),
+        sourceMode: z3.enum(["compositor", "uploaded"]).default("compositor"),
+        dataUrl: z3.string().min(30),
+        fileName: z3.string().max(120).optional()
       }).parse(req.body);
       const saved = saveRenderedGraphicToLibrary(db, {
         workspaceId: String(req.params.wid),
@@ -11705,13 +11674,13 @@ function createPhase3Router(db) {
   });
   router.post("/workspaces/:wid/ai/video-script", requireAuth, requireWorkspaceMember, async (req, res) => {
     try {
-      const body = import_zod3.z.object({
+      const body = z3.object({
         platformKey: PlatformKeySchema2,
-        topic: import_zod3.z.string().min(3).max(1200),
-        formatStyle: import_zod3.z.enum(["short_form_reel", "product_demo", "explainer", "founder_story", "youtube_video"]).default("short_form_reel"),
-        targetDurationSeconds: import_zod3.z.number().int().min(10).max(600).default(45),
-        toneOfVoice: import_zod3.z.string().max(160).optional(),
-        language: import_zod3.z.string().max(32).optional()
+        topic: z3.string().min(3).max(1200),
+        formatStyle: z3.enum(["short_form_reel", "product_demo", "explainer", "founder_story", "youtube_video"]).default("short_form_reel"),
+        targetDurationSeconds: z3.number().int().min(10).max(600).default(45),
+        toneOfVoice: z3.string().max(160).optional(),
+        language: z3.string().max(32).optional()
       }).parse(req.body);
       const result = await runVideoScriptingModule(db, {
         workspaceId: String(req.params.wid),
@@ -11725,11 +11694,11 @@ function createPhase3Router(db) {
   });
   router.post("/workspaces/:wid/ai/repurpose", requireAuth, requireWorkspaceMember, async (req, res) => {
     try {
-      const body = import_zod3.z.object({
-        sourceIdeaOrCopy: import_zod3.z.string().min(10).max(5e3),
-        targetPlatforms: import_zod3.z.array(PlatformKeySchema2).min(2).max(8),
-        toneOfVoice: import_zod3.z.string().max(160).optional(),
-        language: import_zod3.z.string().max(32).optional()
+      const body = z3.object({
+        sourceIdeaOrCopy: z3.string().min(10).max(5e3),
+        targetPlatforms: z3.array(PlatformKeySchema2).min(2).max(8),
+        toneOfVoice: z3.string().max(160).optional(),
+        language: z3.string().max(32).optional()
       }).parse(req.body);
       const result = await runContentRepurposingModule(db, {
         workspaceId: String(req.params.wid),
@@ -11771,13 +11740,13 @@ function createPhase3Router(db) {
   });
   router.post("/workspaces/:wid/safety/check", requireAuth, requireWorkspaceMember, (req, res) => {
     try {
-      const body = import_zod3.z.object({
+      const body = z3.object({
         platformKey: PlatformKeySchema2,
-        socialAccountId: import_zod3.z.string().nullable().optional(),
-        title: import_zod3.z.string().optional(),
-        bodyText: import_zod3.z.string(),
-        hashtags: import_zod3.z.array(import_zod3.z.string()).optional(),
-        scheduledAt: import_zod3.z.string().nullable().optional()
+        socialAccountId: z3.string().nullable().optional(),
+        title: z3.string().optional(),
+        bodyText: z3.string(),
+        hashtags: z3.array(z3.string()).optional(),
+        scheduledAt: z3.string().nullable().optional()
       }).parse(req.body);
       const result = evaluateContentSafety(db, {
         workspaceId: String(req.params.wid),
@@ -11802,16 +11771,16 @@ function createPhase3Router(db) {
   router.post("/workspaces/:wid/campaigns", requireAuth, requireWorkspaceMember, (req, res) => {
     try {
       const wid = String(req.params.wid);
-      const body = import_zod3.z.object({
-        name: import_zod3.z.string().min(2).max(140),
-        objective: import_zod3.z.string().max(500).default(""),
-        description: import_zod3.z.string().max(1500).default(""),
-        colorHex: import_zod3.z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#0052FF"),
-        platforms: import_zod3.z.array(PlatformKeySchema2).default([]),
-        startDate: import_zod3.z.string().nullable().optional(),
-        endDate: import_zod3.z.string().nullable().optional()
+      const body = z3.object({
+        name: z3.string().min(2).max(140),
+        objective: z3.string().max(500).default(""),
+        description: z3.string().max(1500).default(""),
+        colorHex: z3.string().regex(/^#[0-9a-fA-F]{6}$/).default("#0052FF"),
+        platforms: z3.array(PlatformKeySchema2).default([]),
+        startDate: z3.string().nullable().optional(),
+        endDate: z3.string().nullable().optional()
       }).parse(req.body);
-      const id = import_node_crypto15.default.randomUUID();
+      const id = crypto15.randomUUID();
       const now = (/* @__PURE__ */ new Date()).toISOString();
       db.prepare(
         `INSERT INTO content_campaigns (
@@ -11861,9 +11830,9 @@ function createPhase3Router(db) {
     try {
       const wid = String(req.params.wid);
       const itemId = String(req.params.itemId);
-      const body = import_zod3.z.object({
-        scheduledAt: import_zod3.z.string().min(8),
-        timezone: import_zod3.z.string().max(64).optional()
+      const body = z3.object({
+        scheduledAt: z3.string().min(8),
+        timezone: z3.string().max(64).optional()
       }).parse(req.body);
       const existing = db.prepare("SELECT * FROM content_calendar WHERE id = ? AND workspace_id = ?").get(itemId, wid);
       if (!existing) return res.status(404).json({ error: "Calendar item not found." });
@@ -11929,24 +11898,24 @@ function createPhase3Router(db) {
   router.post("/workspaces/:wid/publishing-queue", requireAuth, requireWorkspaceMember, (req, res) => {
     try {
       const wid = String(req.params.wid);
-      const body = import_zod3.z.object({
+      const body = z3.object({
         platformKey: PlatformKeySchema2,
-        socialAccountId: import_zod3.z.string().nullable().optional(),
-        campaignId: import_zod3.z.string().nullable().optional(),
-        generatedContentId: import_zod3.z.string().nullable().optional(),
-        contentPostId: import_zod3.z.string().nullable().optional(),
+        socialAccountId: z3.string().nullable().optional(),
+        campaignId: z3.string().nullable().optional(),
+        generatedContentId: z3.string().nullable().optional(),
+        contentPostId: z3.string().nullable().optional(),
         formatKey: FormatKeySchema.optional(),
-        title: import_zod3.z.string().min(1).max(200),
-        bodyText: import_zod3.z.string().min(1).max(63e3),
-        hashtags: import_zod3.z.array(import_zod3.z.string()).optional(),
-        mediaUrls: import_zod3.z.array(import_zod3.z.string()).optional(),
-        linkUrl: import_zod3.z.string().url().nullable().optional(),
-        scheduledAt: import_zod3.z.string().min(8),
-        timezone: import_zod3.z.string().max(64).optional(),
+        title: z3.string().min(1).max(200),
+        bodyText: z3.string().min(1).max(63e3),
+        hashtags: z3.array(z3.string()).optional(),
+        mediaUrls: z3.array(z3.string()).optional(),
+        linkUrl: z3.string().url().nullable().optional(),
+        scheduledAt: z3.string().min(8),
+        timezone: z3.string().max(64).optional(),
         recurrenceRule: RecurrenceRuleSchema.optional(),
-        publishingModeOverride: import_zod3.z.enum(["automatic", "approval_required"]).optional(),
-        saveAsDraft: import_zod3.z.boolean().optional(),
-        idempotencyKey: import_zod3.z.string().max(120).optional()
+        publishingModeOverride: z3.enum(["automatic", "approval_required"]).optional(),
+        saveAsDraft: z3.boolean().optional(),
+        idempotencyKey: z3.string().max(120).optional()
       }).parse(req.body);
       const enqueued = enqueuePublishingJob(db, {
         workspaceId: wid,
@@ -11976,7 +11945,7 @@ function createPhase3Router(db) {
   });
   router.post("/workspaces/:wid/publishing-queue/:queueId/retry", requireAuth, requireWorkspaceMember, (req, res) => {
     try {
-      const body = import_zod3.z.object({ scheduledAt: import_zod3.z.string().optional() }).parse(req.body || {});
+      const body = z3.object({ scheduledAt: z3.string().optional() }).parse(req.body || {});
       const job = retryFailedQueueJob(db, String(req.params.wid), String(req.params.queueId), body.scheduledAt);
       return res.json({ job });
     } catch (err) {
@@ -12055,9 +12024,9 @@ function createPhase3Router(db) {
   });
   router.post("/workspaces/:wid/approvals/:approvalId/decide", requireAuth, requireWorkspaceMember, (req, res) => {
     try {
-      const body = import_zod3.z.object({
-        decision: import_zod3.z.enum(["approved", "rejected", "changes_requested"]),
-        notes: import_zod3.z.string().max(1e3).optional()
+      const body = z3.object({
+        decision: z3.enum(["approved", "rejected", "changes_requested"]),
+        notes: z3.string().max(1e3).optional()
       }).parse(req.body);
       const result = decideContentApproval(db, {
         workspaceId: String(req.params.wid),
@@ -12118,15 +12087,15 @@ function createPhase3Router(db) {
   router.post("/workspaces/:wid/engagement-messages", requireAuth, requireWorkspaceMember, (req, res) => {
     try {
       const wid = String(req.params.wid);
-      const body = import_zod3.z.object({
+      const body = z3.object({
         platformKey: PlatformKeySchema2,
-        socialAccountId: import_zod3.z.string().nullable().optional(),
-        messageType: import_zod3.z.enum(["comment", "direct_message", "mention", "review"]).default("comment"),
-        authorName: import_zod3.z.string().min(1).max(120),
-        authorHandle: import_zod3.z.string().min(1).max(120),
-        content: import_zod3.z.string().min(1).max(2e3)
+        socialAccountId: z3.string().nullable().optional(),
+        messageType: z3.enum(["comment", "direct_message", "mention", "review"]).default("comment"),
+        authorName: z3.string().min(1).max(120),
+        authorHandle: z3.string().min(1).max(120),
+        content: z3.string().min(1).max(2e3)
       }).parse(req.body);
-      const id = import_node_crypto15.default.randomUUID();
+      const id = crypto15.randomUUID();
       const now = (/* @__PURE__ */ new Date()).toISOString();
       db.prepare(
         `INSERT INTO engagement_messages (
@@ -12156,7 +12125,7 @@ function createPhase3Router(db) {
       const msgId = String(req.params.msgId);
       const msg = db.prepare("SELECT * FROM engagement_messages WHERE id = ? AND workspace_id = ?").get(msgId, wid);
       if (!msg) return res.status(404).json({ error: "Engagement message not found." });
-      const body = import_zod3.z.object({ desiredTone: import_zod3.z.string().max(120).optional() }).parse(req.body || {});
+      const body = z3.object({ desiredTone: z3.string().max(120).optional() }).parse(req.body || {});
       const result = await runCommentReplyDraftingModule(db, {
         workspaceId: wid,
         userId: req.user.id,
@@ -12175,10 +12144,10 @@ function createPhase3Router(db) {
     try {
       const wid = String(req.params.wid);
       const msgId = String(req.params.msgId);
-      const body = import_zod3.z.object({
-        replyText: import_zod3.z.string().min(1).max(2e3),
-        mode: import_zod3.z.enum(["manual", "ai_approved", "ai_auto"]).default("ai_approved"),
-        suggestionId: import_zod3.z.string().optional()
+      const body = z3.object({
+        replyText: z3.string().min(1).max(2e3),
+        mode: z3.enum(["manual", "ai_approved", "ai_auto"]).default("ai_approved"),
+        suggestionId: z3.string().optional()
       }).parse(req.body);
       const msg = db.prepare("SELECT * FROM engagement_messages WHERE id = ? AND workspace_id = ?").get(msgId, wid);
       if (!msg) return res.status(404).json({ error: "Engagement message not found." });
@@ -12228,7 +12197,7 @@ function createPhase3Router(db) {
     try {
       const wid = String(req.params.wid);
       const msgId = String(req.params.msgId);
-      const body = import_zod3.z.object({ reason: import_zod3.z.string().min(3).max(500) }).parse(req.body);
+      const body = z3.object({ reason: z3.string().min(3).max(500) }).parse(req.body);
       const now = (/* @__PURE__ */ new Date()).toISOString();
       db.prepare(
         `UPDATE engagement_messages
@@ -12245,10 +12214,17 @@ function createPhase3Router(db) {
 
 // server/app.ts
 function createExpressApp(db) {
-  const app = (0, import_express3.default)();
+  const app = express();
   app.set("trust proxy", 1);
-  app.use((0, import_cookie_parser.default)());
-  app.use(import_express3.default.json({ limit: "12mb" }));
+  app.use(cookieParser());
+  app.use((req, _res, next) => {
+    const raw = req;
+    if (req.readableEnded && req.body !== void 0 && !raw._body) {
+      raw._body = true;
+    }
+    next();
+  });
+  app.use(express.json({ limit: "12mb" }));
   app.use((_req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
@@ -12352,7 +12328,7 @@ function createExpressApp(db) {
     });
     return res.status(202).json({ received: true, eventId });
   });
-  app.use("/generated", import_express3.default.static(getGeneratedMediaRootDir()));
+  app.use("/generated", express.static(getGeneratedMediaRootDir()));
   app.use("/api", createApiRouter(db));
   app.use("/api", createPhase3Router(db));
   app.use((err, _req, res, _next) => {
@@ -12414,8 +12390,6 @@ function handler(req, res) {
     }
   }
 }
-
-if (module.exports && typeof module.exports.default === "function") {
-  module.exports = module.exports.default;
-}
-
+export {
+  handler as default
+};

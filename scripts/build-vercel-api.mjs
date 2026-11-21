@@ -5,24 +5,21 @@ import { build } from 'esbuild';
 async function buildVercelApi() {
   const outDir = path.resolve(process.cwd(), 'api');
   fs.mkdirSync(outDir, { recursive: true });
-  const outfile = path.join(outDir, 'server.cjs');
+  const outfile = path.join(outDir, 'index.js');
 
   await build({
     entryPoints: ['server/vercel-entry.ts'],
     bundle: true,
     platform: 'node',
     target: 'node22',
-    format: 'cjs',
+    format: 'esm',
     packages: 'external',
     outfile,
     sourcemap: false,
     minify: false,
     logLevel: 'info',
     banner: {
-      js: '// Auto-generated Vercel Serverless Express handler. Source: server/vercel-entry.ts',
-    },
-    footer: {
-      js: '\nif (module.exports && typeof module.exports.default === "function") {\n  module.exports = module.exports.default;\n}\n',
+      js: '// Auto-generated Vercel Serverless Express handler (ESM). Source: server/vercel-entry.ts',
     },
   });
 

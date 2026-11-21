@@ -16,6 +16,13 @@ export function createExpressApp(db: DbInstance) {
 
   app.set('trust proxy', 1);
   app.use(cookieParser());
+  app.use((req, _res, next) => {
+    const raw = req as express.Request & { _body?: boolean };
+    if (req.readableEnded && req.body !== undefined && !raw._body) {
+      raw._body = true;
+    }
+    next();
+  });
   app.use(express.json({ limit: '12mb' }));
 
   // Security headers
