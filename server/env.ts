@@ -6,10 +6,16 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+const emptyToUndefined = (val: unknown) =>
+  typeof val === 'string' && val.trim() === '' ? undefined : val;
+
 const EnvSchema = z.object({
-  PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  APP_URL: z.string().optional().default('http://localhost:3000'),
+  PORT: z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).max(65535).default(3000)),
+  NODE_ENV: z.preprocess(
+    (val) => (val === 'development' || val === 'production' || val === 'test' ? val : undefined),
+    z.enum(['development', 'production', 'test']).default('development')
+  ),
+  APP_URL: z.preprocess(emptyToUndefined, z.string().optional()),
   SESSION_SECRET: z.string().optional(),
   TOKEN_ENCRYPTION_KEY: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
@@ -37,19 +43,31 @@ const EnvSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   REDIS_URL: z.string().optional(),
-  ENABLE_EMBEDDED_WORKER: z.string().optional().default('true'),
-  WORKER_POLL_INTERVAL_MS: z.coerce.number().int().min(1000).max(300000).default(15000),
+  ENABLE_EMBEDDED_WORKER: z.preprocess(emptyToUndefined, z.string().optional().default('true')),
+  WORKER_POLL_INTERVAL_MS: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(1000).max(300000).default(15000)
+  ),
   IMAGE_GENERATION_API_URL: z.string().optional(),
   IMAGE_GENERATION_API_KEY: z.string().optional(),
   IMAGE_GENERATION_MODEL: z.string().optional(),
-  ENABLE_PAID_GEMINI_IMAGE_MODEL: z.string().optional().default('false'),
+  ENABLE_PAID_GEMINI_IMAGE_MODEL: z.preprocess(emptyToUndefined, z.string().optional().default('false')),
 });
 
-const parsed = EnvSchema.safeParse(process.env);
-if (!parsed.success) {
-  console.error('Invalid server environment configuration:', parsed.error.flatten().fieldErrors);
-  process.exit(1);
+const rawParsed = EnvSchema.safeParse(process.env);
+if (!rawParsed.success) {
+  console.warn('Server environment validation warning (using safe defaults):', rawParsed.error.flatten().fieldErrors);
 }
+const parsedData = rawParsed.success
+  ? rawParsed.data
+  : EnvSchema.parse({
+      NODE_ENV: process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'test' ? process.env.NODE_ENV : 'development',
+    });
+
+const vercelFallbackHost = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
+const resolvedAppUrl =
+  parsedData.APP_URL ||
+  (vercelFallbackHost ? `https://${vercelFallbackHost.replace(/^https?:\/\//, '')}` : 'http://localhost:3000');
 
 interface PersistedRuntimeSecrets {
   sessionSecret: string;
@@ -111,24 +129,24 @@ export function loadOrCreateRuntimeSecrets(secretsFilePath?: string): PersistedR
 const persistedSecrets = loadOrCreateRuntimeSecrets();
 
 export const env = {
-  ...parsed.data,
-  META_APP_ID: parsed.data.META_APP_ID || parsed.data.META_CLIENT_ID,
-  META_APP_SECRET: parsed.data.META_APP_SECRET || parsed.data.META_CLIENT_SECRET,
-  TIKTOK_CLIENT_KEY: parsed.data.TIKTOK_CLIENT_KEY || parsed.data.TIKTOK_CLIENT_ID,
-  GOOGLE_YOUTUBE_CLIENT_ID: parsed.data.GOOGLE_YOUTUBE_CLIENT_ID || parsed.data.YOUTUBE_CLIENT_ID || parsed.data.GOOGLE_CLIENT_ID,
-  GOOGLE_YOUTUBE_CLIENT_SECRET: parsed.data.GOOGLE_YOUTUBE_CLIENT_SECRET || parsed.data.YOUTUBE_CLIENT_SECRET || parsed.data.GOOGLE_CLIENT_SECRET,
-  PINTEREST_CLIENT_ID: parsed.data.PINTEREST_CLIENT_ID || parsed.data.PINTEREST_APP_ID,
-  PINTEREST_CLIENT_SECRET: parsed.data.PINTEREST_CLIENT_SECRET || parsed.data.PINTEREST_APP_SECRET,
-  GOOGLE_BUSINESS_CLIENT_ID: parsed.data.GOOGLE_BUSINESS_CLIENT_ID || parsed.data.GOOGLE_CLIENT_ID,
-  GOOGLE_BUSINESS_CLIENT_SECRET: parsed.data.GOOGLE_BUSINESS_CLIENT_SECRET || parsed.data.GOOGLE_CLIENT_SECRET,
-  ENABLE_EMBEDDED_WORKER: parsed.data.ENABLE_EMBEDDED_WORKER !== 'false',
-  ENABLE_PAID_GEMINI_IMAGE_MODEL: parsed.data.ENABLE_PAID_GEMINI_IMAGE_MODEL === 'true',
-  APP_URL: (parsed.data.APP_URL || 'http://localhost:3000').replace(/\/+$/, ''),
-  SESSION_SECRET: parsed.data.SESSION_SECRET && parsed.data.SESSION_SECRET.length >= 16
-    ? parsed.data.SESSION_SECRET
+  ...parsedData,
+  META_APP_ID: parsedData.META_APP_ID || parsedData.META_CLIENT_ID,
+  META_APP_SECRET: parsedData.META_APP_SECRET || parsedData.META_CLIENT_SECRET,
+  TIKTOK_CLIENT_KEY: parsedData.TIKTOK_CLIENT_KEY || parsedData.TIKTOK_CLIENT_ID,
+  GOOGLE_YOUTUBE_CLIENT_ID: parsedData.GOOGLE_YOUTUBE_CLIENT_ID || parsedData.YOUTUBE_CLIENT_ID || parsedData.GOOGLE_CLIENT_ID,
+  GOOGLE_YOUTUBE_CLIENT_SECRET: parsedData.GOOGLE_YOUTUBE_CLIENT_SECRET || parsedData.YOUTUBE_CLIENT_SECRET || parsedData.GOOGLE_CLIENT_SECRET,
+  PINTEREST_CLIENT_ID: parsedData.PINTEREST_CLIENT_ID || parsedData.PINTEREST_APP_ID,
+  PINTEREST_CLIENT_SECRET: parsedData.PINTEREST_CLIENT_SECRET || parsedData.PINTEREST_APP_SECRET,
+  GOOGLE_BUSINESS_CLIENT_ID: parsedData.GOOGLE_BUSINESS_CLIENT_ID || parsedData.GOOGLE_CLIENT_ID,
+  GOOGLE_BUSINESS_CLIENT_SECRET: parsedData.GOOGLE_BUSINESS_CLIENT_SECRET || parsedData.GOOGLE_CLIENT_SECRET,
+  ENABLE_EMBEDDED_WORKER: parsedData.ENABLE_EMBEDDED_WORKER !== 'false',
+  ENABLE_PAID_GEMINI_IMAGE_MODEL: parsedData.ENABLE_PAID_GEMINI_IMAGE_MODEL === 'true',
+  APP_URL: resolvedAppUrl.replace(/\/+$/, ''),
+  SESSION_SECRET: parsedData.SESSION_SECRET && parsedData.SESSION_SECRET.length >= 16
+    ? parsedData.SESSION_SECRET
     : persistedSecrets.sessionSecret,
-  TOKEN_ENCRYPTION_KEY: parsed.data.TOKEN_ENCRYPTION_KEY && parsed.data.TOKEN_ENCRYPTION_KEY.length >= 32
-    ? parsed.data.TOKEN_ENCRYPTION_KEY
+  TOKEN_ENCRYPTION_KEY: parsedData.TOKEN_ENCRYPTION_KEY && parsedData.TOKEN_ENCRYPTION_KEY.length >= 32
+    ? parsedData.TOKEN_ENCRYPTION_KEY
     : persistedSecrets.tokenEncryptionKey,
 };
 

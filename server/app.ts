@@ -8,6 +8,7 @@ import {
   recordPlatformWebhookEvent,
 } from './services/oauthService';
 import { isValidPlatformKey } from './integrations/registry';
+import { getGeneratedMediaRootDir } from './ai/modules/imageGeneration';
 import type { PlatformKey } from '../src/shared/api-contracts';
 
 export function createExpressApp(db: DbInstance) {
@@ -141,9 +142,17 @@ export function createExpressApp(db: DbInstance) {
     return res.status(202).json({ received: true, eventId });
   });
 
-  app.use('/generated', express.static('public/generated'));
+  app.use('/generated', express.static(getGeneratedMediaRootDir()));
   app.use('/api', createApiRouter(db));
   app.use('/api', createPhase3Router(db));
+
+  // Final Express error handler so unexpected runtime errors return structured JSON instead of crashing serverless invocations
+  app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    const message = err instanceof Error ? err.message : 'Unexpected server error';
+    if (!res.headersSent) {
+      res.status(500).json({ error: message });
+    }
+  });
 
   return app;
 }

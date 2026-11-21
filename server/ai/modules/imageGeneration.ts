@@ -67,15 +67,22 @@ export function getImageGenerationCapabilities() {
   };
 }
 
+export function getGeneratedMediaRootDir(): string {
+  const isServerless = process.env.VERCEL === '1' || process.env.AWS_LAMBDA_FUNCTION_VERSION !== undefined;
+  return isServerless
+    ? '/tmp/livingtech-generated'
+    : path.resolve(process.cwd(), 'public', 'generated');
+}
+
 function saveImageBufferToWorkspacePublic(workspaceId: string, ext: string, buffer: Buffer): { storagePath: string; publicUrl: string } {
   const fileName = `graphic-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
   const relDir = path.join('generated', workspaceId);
-  const absDir = path.resolve(process.cwd(), 'public', relDir);
+  const absDir = path.join(getGeneratedMediaRootDir(), workspaceId);
   fs.mkdirSync(absDir, { recursive: true });
   const absPath = path.join(absDir, fileName);
   fs.writeFileSync(absPath, buffer);
   return {
-    storagePath: `/public/${relDir}/${fileName}`,
+    storagePath: absPath,
     publicUrl: `/${relDir}/${fileName}`,
   };
 }

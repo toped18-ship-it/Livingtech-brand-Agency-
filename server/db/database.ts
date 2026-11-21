@@ -1,12 +1,12 @@
-import Database from 'better-sqlite3';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { logger } from '../env';
 import { SOCIAL_PROVIDER_LIST } from '../integrations/registry';
 import { DEFAULT_PUBLISHING_PREFERENCES } from '../integrations/types';
+import { openSqliteDatabase, type DbInstance, type SqliteDriverName } from './sqliteDriver';
 
-export type DbInstance = Database.Database;
+export type { DbInstance, SqliteDriverName };
 
 export function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -23,7 +23,7 @@ export function verifyPassword(password: string, storedHash: string): boolean {
   return crypto.timingSafeEqual(derived, keyBuf);
 }
 
-export function initDatabase(dbPath?: string): DbInstance {
+export function initDatabase(dbPath?: string, options?: { forceDriver?: SqliteDriverName }): DbInstance {
   const isServerless = process.env.VERCEL === '1' || process.env.AWS_LAMBDA_FUNCTION_VERSION !== undefined;
   const defaultPath = isServerless ? '/tmp/livingtech.db' : path.resolve(process.cwd(), 'data', 'livingtech.db');
   const targetPath = dbPath ?? defaultPath;
@@ -31,9 +31,15 @@ export function initDatabase(dbPath?: string): DbInstance {
     fs.mkdirSync(path.dirname(targetPath), { recursive: true });
   }
 
-  const db = new Database(targetPath);
+  const { db } = openSqliteDatabase(targetPath, options);
   db.pragma('foreign_keys = ON');
-  db.pragma('journal_mode = WAL');
+  if (targetPath !== ':memory:') {
+    try {
+      db.pragma('journal_mode = WAL');
+    } catch {
+      // Fallback gracefully if serverless /tmp restricts WAL mode
+    }
+  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS roles (

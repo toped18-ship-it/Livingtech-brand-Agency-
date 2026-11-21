@@ -3,15 +3,18 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "tsx server.ts",
     "start": "tsx server.ts",
     "worker": "tsx server/worker.ts",
-    "build": "vite build",
+    "build": "vite build && node scripts/build-vercel-api.mjs",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
+    "clean": "rm -rf dist server.js api/server.cjs",
     "lint": "tsc --noEmit",
-    "test": "tsx --test src/utils/domain.test.ts src/utils/planEntitlements.test.ts server/core.test.ts server/phase2-integrations.test.ts server/phase3-ai-publishing.test.ts firestore.rules.test.ts"
+    "test": "tsx --test src/utils/domain.test.ts src/utils/planEntitlements.test.ts server/core.test.ts server/phase2-integrations.test.ts server/phase3-ai-publishing.test.ts server/vercel-serverless.test.ts firestore.rules.test.ts"
   },
   "dependencies": {
     "@firebase/eslint-plugin-security-rules": "^0.0.2",
