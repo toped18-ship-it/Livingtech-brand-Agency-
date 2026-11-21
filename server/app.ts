@@ -9,6 +9,7 @@ import {
 } from './services/oauthService';
 import { isValidPlatformKey } from './integrations/registry';
 import { getGeneratedMediaRootDir } from './ai/modules/imageGeneration';
+import { ensureRtdbHydrated, isRtdbSyncEnabled, persistDatabaseToRtdb } from './db/rtdbSync';
 import type { PlatformKey } from '../src/shared/api-contracts';
 
 export function createExpressApp(db: DbInstance) {
@@ -29,6 +30,49 @@ export function createExpressApp(db: DbInstance) {
   app.use((_req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+  });
+
+  // Firebase Realtime Database cold-start hydration + write-through persistence on mutations
+  app.use(async (req, res, next) => {
+    if (!isRtdbSyncEnabled()) {
+      return next();
+    }
+
+    const idToken =
+      typeof req.headers['x-firebase-id-token'] === 'string' && req.headers['x-firebase-id-token'].trim()
+        ? req.headers['x-firebase-id-token'].trim()
+        : undefined;
+
+    try {
+      await ensureRtdbHydrated(db, { authToken: idToken });
+    } catch {
+      // Non-blocking fallback
+    }
+
+    const isMutation =
+      req.method === 'POST' ||
+      req.method === 'PUT' ||
+      req.method === 'PATCH' ||
+      req.method === 'DELETE';
+
+    if (isMutation) {
+      const originalEnd = res.end.bind(res);
+      let persisted = false;
+      (res as unknown as { end: (...args: unknown[]) => express.Response }).end = (...args: unknown[]) => {
+        if (persisted || res.statusCode >= 400) {
+          return originalEnd(...(args as Parameters<typeof originalEnd>));
+        }
+        persisted = true;
+        void persistDatabaseToRtdb(db, { authToken: idToken })
+          .catch(() => undefined)
+          .finally(() => {
+            originalEnd(...(args as Parameters<typeof originalEnd>));
+          });
+        return res;
+      };
+    }
+
     next();
   });
 
@@ -85,6 +129,10 @@ export function createExpressApp(db: DbInstance) {
         oauthError,
         errorDescription,
       });
+
+      if (isRtdbSyncEnabled()) {
+        await persistDatabaseToRtdb(db).catch(() => undefined);
+      }
 
       return res.send(
         renderOAuthPopupResult({

@@ -11,6 +11,14 @@ import {
   getUserBySessionToken,
   listUserWorkspaces,
 } from './services/authService';
+import {
+  DEFAULT_RTDB_URL,
+  getRtdbStatus,
+  hydrateDatabaseFromRtdb,
+  persistDatabaseToRtdb,
+  resetRtdbSyncStateForTest,
+  setRtdbFetchTransportForTest,
+} from './db/rtdbSync';
 
 test('node:sqlite driver matches better-sqlite3 for full schema, transactions, auth, and workspaces', () => {
   for (const driver of ['better-sqlite3', 'node:sqlite'] as const) {
@@ -69,6 +77,168 @@ test('node:sqlite driver matches better-sqlite3 for full schema, transactions, a
   }
 });
 
+function createSimulatedRtdbServer() {
+  const root: {
+    tables: Record<string, Record<string, Record<string, unknown>>>;
+    meta: Record<string, unknown>;
+  } = { tables: {}, meta: {} };
+  let patchCalls = 0;
+  let getCalls = 0;
+
+  const transport = async (url: string, init?: RequestInit) => {
+    assert.ok(url.startsWith(DEFAULT_RTDB_URL), `Expected RTDB URL starting with ${DEFAULT_RTDB_URL}, got ${url}`);
+    const parsed = new URL(url);
+    const cleanPath = parsed.pathname.replace(/^\/+|(\.json)$/g, '');
+
+    if (init?.method === 'PATCH') {
+      patchCalls += 1;
+      const body = JSON.parse(String(init.body || '{}')) as Record<string, unknown>;
+      for (const [relPath, val] of Object.entries(body)) {
+        if (relPath === 'meta' && val && typeof val === 'object') {
+          root.meta = val as Record<string, unknown>;
+          continue;
+        }
+        const parts = relPath.split('/');
+        if (parts[0] === 'tables' && parts.length === 3) {
+          const [, table, key] = parts;
+          root.tables[table] = root.tables[table] || {};
+          if (val === null) {
+            delete root.tables[table][key];
+          } else {
+            root.tables[table][key] = val as Record<string, unknown>;
+          }
+        }
+      }
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    getCalls += 1;
+    if (cleanPath === 'livingtech_app/meta/updatedAt') {
+      return new Response(JSON.stringify(root.meta.updatedAt ?? null), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (cleanPath === 'livingtech_app') {
+      const payload = Object.keys(root.tables).length > 0 ? root : null;
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return new Response(JSON.stringify(null), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  return {
+    root,
+    transport,
+    getStats: () => ({ patchCalls, getCalls }),
+  };
+}
+
+test('Firebase Realtime Database multi-path PATCH, cold-start hydration, and deletion sync preserve all users across instances', async () => {
+  const rtdb = createSimulatedRtdbServer();
+  setRtdbFetchTransportForTest(rtdb.transport);
+
+  const dbA = initDatabase(':memory:', { forceDriver: 'node:sqlite' });
+  const dbB = initDatabase(':memory:', { forceDriver: 'node:sqlite' });
+
+  try {
+    // 1. Register User 1 on Container A and persist via multi-path PATCH to Firebase Realtime Database
+    const user1 = registerUserWithWorkspace(dbA, {
+      fullName: 'RTDB Persistent Client',
+      email: 'rtdb-client@livingtech.io',
+      password: 'RtdbPassword2026!',
+      workspaceName: 'RTDB Brand HQ',
+      industry: 'Media',
+    });
+
+    const persistedA = await persistDatabaseToRtdb(dbA);
+    assert.equal(persistedA, true);
+    assert.ok(rtdb.getStats().patchCalls >= 1);
+    assert.ok(rtdb.root.tables.users && Object.keys(rtdb.root.tables.users).length >= 2);
+
+    // 2. Simulate brand-new cold-start Vercel Container B hydrating from Firebase Realtime Database
+    resetRtdbSyncStateForTest();
+    const hydratedB = await hydrateDatabaseFromRtdb(dbB, { force: true });
+    assert.equal(hydratedB, true);
+
+    // 3. Verify User 1 login, session token, and workspace exist identically on Container B
+    const resolvedUser1 = getUserBySessionToken(dbB, user1.token);
+    assert.equal(resolvedUser1?.email, 'rtdb-client@livingtech.io');
+    assert.equal(resolvedUser1?.fullName, 'RTDB Persistent Client');
+
+    const loggedIn1 = loginWithPassword(dbB, 'rtdb-client@livingtech.io', 'RtdbPassword2026!');
+    assert.equal(loggedIn1.user.id, user1.user.id);
+
+    const workspaces1 = listUserWorkspaces(dbB, user1.user.id);
+    assert.equal(workspaces1.length, 1);
+    assert.equal(workspaces1[0].name, 'RTDB Brand HQ');
+
+    // 4. Register User 2 on Container B -> multi-path PATCH must preserve BOTH User 1 and User 2
+    const user2 = registerUserWithWorkspace(dbB, {
+      fullName: 'Second RTDB Client',
+      email: 'rtdb-client-2@livingtech.io',
+      password: 'SecondPassword2026!',
+      workspaceName: 'Second Brand Studio',
+      industry: 'Retail',
+    });
+    const persistedB = await persistDatabaseToRtdb(dbB);
+    assert.equal(persistedB, true);
+
+    const rtdbUsers = Object.values(rtdb.root.tables.users || {});
+    assert.ok(rtdbUsers.some((u) => u.email === 'rtdb-client@livingtech.io'), 'User 1 must remain in RTDB');
+    assert.ok(rtdbUsers.some((u) => u.email === 'rtdb-client-2@livingtech.io'), 'User 2 must be stored in RTDB');
+
+    // 5. Delete User 2's session on Container B -> verify null PATCH removes it from RTDB
+    dbB.prepare('DELETE FROM sessions WHERE user_id = ?').run(user2.user.id);
+    const persistedDelete = await persistDatabaseToRtdb(dbB);
+    assert.equal(persistedDelete, true);
+    const remainingUser2Sessions = Object.values(rtdb.root.tables.sessions || {}).filter(
+      (s) => s.user_id === user2.user.id
+    );
+    assert.equal(remainingUser2Sessions.length, 0, 'Deleted session must be removed from RTDB');
+
+    const status = getRtdbStatus();
+    assert.equal(status.connected, true);
+    assert.equal(status.readyForWrites, true);
+    assert.equal(status.hydrated, true);
+    assert.equal(status.databaseURL, DEFAULT_RTDB_URL);
+  } finally {
+    setRtdbFetchTransportForTest(null);
+    dbA.close();
+    dbB.close();
+  }
+});
+
+test('Firebase Realtime Database sync degrades gracefully without crashing when App Check returns 401', async () => {
+  setRtdbFetchTransportForTest(async () => {
+    return new Response(JSON.stringify({ error: 'Missing appcheck token' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  });
+
+  const db = initDatabase(':memory:', { forceDriver: 'node:sqlite' });
+  try {
+    const ok = await hydrateDatabaseFromRtdb(db, { force: true });
+    assert.equal(ok, false);
+    const status = getRtdbStatus();
+    assert.equal(status.connected, false);
+    assert.equal(status.readyForWrites, false);
+    assert.ok(status.lastError?.includes('401'));
+  } finally {
+    setRtdbFetchTransportForTest(null);
+    db.close();
+  }
+});
+
 test('compiled ESM api/index.js boots and handles GET/POST auth requests in plain Node.js under VERCEL=1', async () => {
   const bundlePath = path.resolve(process.cwd(), 'api', 'index.js');
   execFileSync(process.execPath, [path.resolve(process.cwd(), 'scripts', 'build-vercel-api.mjs')], {
@@ -109,6 +279,7 @@ test('compiled ESM api/index.js boots and handles GET/POST auth requests in plai
       VERCEL: '1',
       VERCEL_URL: 'livingtech-agency.vercel.app',
       NODE_ENV: 'production',
+      DISABLE_RTDB_SYNC: 'true',
       PORT: '',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -142,9 +313,10 @@ test('compiled ESM api/index.js boots and handles GET/POST auth requests in plai
     // 1. Health check
     const healthRes = await fetch(`${baseUrl}/api/health`);
     assert.equal(healthRes.status, 200, `Expected 200 on /api/health, got ${healthRes.status}`);
-    const healthJson = (await healthRes.json()) as { status: string; storage: string };
+    const healthJson = (await healthRes.json()) as { status: string; storage: string; databaseURL: string };
     assert.equal(healthJson.status, 'ok');
-    assert.equal(healthJson.storage, 'sql');
+    assert.equal(healthJson.storage, 'firebase-rtdb');
+    assert.equal(healthJson.databaseURL, DEFAULT_RTDB_URL);
 
     // 2. Public subscription plans
     const plansRes = await fetch(`${baseUrl}/api/plans`);

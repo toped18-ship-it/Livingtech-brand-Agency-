@@ -103,6 +103,9 @@ export default defineConfig(() => {
         },
       },
     ],
+    optimizeDeps: {
+      include: ['firebase/app', 'firebase/auth', 'firebase/database', 'firebase/analytics'],
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

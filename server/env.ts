@@ -17,6 +17,13 @@ const EnvSchema = z.object({
   ),
   APP_URL: z.preprocess(emptyToUndefined, z.string().optional()),
   SQLITE_DB_PATH: z.preprocess(emptyToUndefined, z.string().optional()),
+  FIREBASE_DATABASE_URL: z.preprocess(
+    emptyToUndefined,
+    z.string().optional().default('https://livingtech-brand-agency-default-rtdb.firebaseio.com')
+  ),
+  FIREBASE_DATABASE_SECRET: z.string().optional(),
+  FIREBASE_SERVICE_ACCOUNT_JSON: z.string().optional(),
+  DISABLE_RTDB_SYNC: z.preprocess(emptyToUndefined, z.string().optional()),
   SESSION_SECRET: z.string().optional(),
   TOKEN_ENCRYPTION_KEY: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),

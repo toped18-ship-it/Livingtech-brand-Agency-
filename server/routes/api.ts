@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import type { DbInstance } from '../db/database';
+import { getRtdbStatus, hydrateDatabaseFromRtdb } from '../db/rtdbSync';
 import { hashPassword, verifyPassword } from '../db/database';
 import {
   assertWorkspaceAccess,
@@ -174,10 +175,18 @@ export function createApiRouter(db: DbInstance): Router {
   // ===========================================================================
   // HEALTH & PUBLIC CATALOG
   // ===========================================================================
-  router.get('/health', (_req, res) => {
+  router.get('/health', async (req, res) => {
+    const forceProbe = req.query.probe === '1' || req.query.probe === 'true';
+    const current = getRtdbStatus();
+    if (current.enabled && (!current.connected || forceProbe)) {
+      await hydrateDatabaseFromRtdb(db, { force: true }).catch(() => false);
+    }
+    const rtdb = getRtdbStatus();
     res.json({
       status: 'ok',
-      storage: 'sql',
+      storage: 'firebase-rtdb',
+      databaseURL: rtdb.databaseURL,
+      rtdb,
       service: 'livingtech-brand-agency-api',
       timestamp: new Date().toISOString(),
     });

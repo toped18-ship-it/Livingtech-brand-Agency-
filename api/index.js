@@ -21,6 +21,13 @@ var EnvSchema = z.object({
   ),
   APP_URL: z.preprocess(emptyToUndefined, z.string().optional()),
   SQLITE_DB_PATH: z.preprocess(emptyToUndefined, z.string().optional()),
+  FIREBASE_DATABASE_URL: z.preprocess(
+    emptyToUndefined,
+    z.string().optional().default("https://livingtech-brand-agency-default-rtdb.firebaseio.com")
+  ),
+  FIREBASE_DATABASE_SECRET: z.string().optional(),
+  FIREBASE_SERVICE_ACCOUNT_JSON: z.string().optional(),
+  DISABLE_RTDB_SYNC: z.preprocess(emptyToUndefined, z.string().optional()),
   SESSION_SECRET: z.string().optional(),
   TOKEN_ENCRYPTION_KEY: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
@@ -4014,23 +4021,514 @@ import cookieParser from "cookie-parser";
 
 // server/routes/api.ts
 import { Router } from "express";
-import crypto7 from "node:crypto";
+import crypto8 from "node:crypto";
 import { z as z2 } from "zod";
 
-// server/services/authService.ts
+// server/db/rtdbSync.ts
 import crypto3 from "node:crypto";
+var DEFAULT_RTDB_URL = "https://livingtech-brand-agency-default-rtdb.firebaseio.com";
+var RTDB_ROOT_NODE = "livingtech_app";
+var RTDB_SYNC_TABLES = [
+  "roles",
+  "permissions",
+  "users",
+  "sessions",
+  "auth_tokens",
+  "organisations",
+  "workspaces",
+  "workspace_members",
+  "brand_profiles",
+  "social_platforms",
+  "social_accounts",
+  "social_account_tokens",
+  "subscription_plans",
+  "subscriptions",
+  "system_settings",
+  "content_campaigns",
+  "content_posts",
+  "content_variants",
+  "media_library",
+  "content_assets",
+  "publishing_schedules",
+  "publishing_jobs",
+  "publishing_logs",
+  "analytics_snapshots",
+  "engagement_items",
+  "notifications",
+  "ai_usage",
+  "support_tickets",
+  "audit_logs",
+  "ai_content_suggestions",
+  "oauth_states",
+  "oauth_connection_logs",
+  "platform_permissions",
+  "platform_capabilities",
+  "platform_sync_logs",
+  "platform_webhook_events",
+  "ai_brand_analyses",
+  "ai_content_strategies",
+  "generated_content",
+  "generated_images",
+  "content_calendar",
+  "publishing_queue",
+  "publishing_attempts",
+  "content_approvals",
+  "engagement_messages",
+  "ai_reply_suggestions",
+  "ai_generation_usage"
+];
+var customFetchTransport = null;
+var syncState = {
+  hydrated: false,
+  connected: false,
+  lastHydratedAt: null,
+  lastPersistedAt: null,
+  lastError: null,
+  lastAttemptMs: 0,
+  lastFreshnessCheckMs: 0,
+  lastKnownRemoteUpdatedAt: null,
+  inflightHydration: null,
+  // Snapshot of the last state successfully read from / written to RTDB per table -> rtdbKey -> JSON string
+  lastSyncedSnapshot: /* @__PURE__ */ new Map(),
+  // Cached Google OAuth2 access token when FIREBASE_SERVICE_ACCOUNT_JSON is provided
+  cachedServiceAccessToken: null,
+  cachedServiceAccessTokenExpiresAtMs: 0
+};
+var RETRY_BACKOFF_MS = 15e3;
+var REQUEST_TIMEOUT_MS = 3500;
+function getFreshnessCheckIntervalMs() {
+  if (customFetchTransport) return 0;
+  return process.env.VERCEL === "1" || process.env.AWS_LAMBDA_FUNCTION_VERSION !== void 0 ? 1500 : 1e4;
+}
+function getRtdbDatabaseUrl() {
+  const configured = process.env.FIREBASE_DATABASE_URL?.trim();
+  return (configured || DEFAULT_RTDB_URL).replace(/\/+$/, "");
+}
+function isRtdbSyncEnabled() {
+  if (customFetchTransport) return true;
+  if (process.env.DISABLE_RTDB_SYNC === "true") return false;
+  if (process.env.NODE_ENV === "test") return false;
+  return Boolean(getRtdbDatabaseUrl());
+}
+function stripWrappingQuotes(val) {
+  const trimmed = val.trim();
+  if (trimmed.startsWith('"') && trimmed.endsWith('"') || trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+function tryParseServiceAccountJson(raw) {
+  if (!raw?.trim()) return null;
+  const trimmed = raw.trim();
+  const candidates = [trimmed];
+  if (!trimmed.startsWith("{") && /^[A-Za-z0-9+/=_-]{80,}$/.test(trimmed)) {
+    try {
+      candidates.push(Buffer.from(trimmed, "base64").toString("utf8").trim());
+    } catch {
+    }
+  }
+  for (const candidate of candidates) {
+    if (!candidate.startsWith("{")) continue;
+    try {
+      const parsed = JSON.parse(candidate);
+      if (typeof parsed.client_email === "string" && typeof parsed.private_key === "string") {
+        return {
+          client_email: parsed.client_email,
+          private_key: parsed.private_key.replace(/\\n/g, "\n"),
+          token_uri: parsed.token_uri || "https://oauth2.googleapis.com/token"
+        };
+      }
+    } catch {
+    }
+  }
+  return null;
+}
+function parseServiceAccountFromEnv() {
+  return tryParseServiceAccountJson(process.env.FIREBASE_SERVICE_ACCOUNT_JSON) || tryParseServiceAccountJson(process.env.FIREBASE_DATABASE_SECRET) || tryParseServiceAccountJson(process.env.FIREBASE_RTDB_AUTH);
+}
+function getDatabaseSecretFromEnv() {
+  const raw = process.env.FIREBASE_DATABASE_SECRET?.trim() || process.env.FIREBASE_RTDB_AUTH?.trim();
+  if (!raw) return null;
+  if (tryParseServiceAccountJson(raw)) return null;
+  const cleaned = stripWrappingQuotes(raw);
+  return cleaned.length > 0 ? cleaned : null;
+}
+function detectRtdbAuthMode(idToken) {
+  if (parseServiceAccountFromEnv()) return "service_account";
+  if (getDatabaseSecretFromEnv()) return "database_secret";
+  if (idToken?.trim()) return "id_token";
+  return "open";
+}
+function getRtdbStatus() {
+  return {
+    enabled: isRtdbSyncEnabled(),
+    databaseURL: getRtdbDatabaseUrl(),
+    authMode: detectRtdbAuthMode(),
+    connected: syncState.connected,
+    readyForWrites: syncState.connected && syncState.lastError === null,
+    hydrated: syncState.hydrated,
+    lastHydratedAt: syncState.lastHydratedAt,
+    lastPersistedAt: syncState.lastPersistedAt,
+    lastError: syncState.lastError
+  };
+}
+function base64UrlEncode(input) {
+  return Buffer.from(input).toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+async function getServiceAccountAccessToken() {
+  const creds = parseServiceAccountFromEnv();
+  if (!creds) return null;
+  const nowMs = Date.now();
+  if (syncState.cachedServiceAccessToken && nowMs < syncState.cachedServiceAccessTokenExpiresAtMs - 6e4) {
+    return syncState.cachedServiceAccessToken;
+  }
+  try {
+    const nowSec = Math.floor(nowMs / 1e3);
+    const header = base64UrlEncode(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+    const claimSet = base64UrlEncode(
+      JSON.stringify({
+        iss: creds.client_email,
+        scope: "https://www.googleapis.com/auth/firebase.database https://www.googleapis.com/auth/userinfo.email",
+        aud: creds.token_uri || "https://oauth2.googleapis.com/token",
+        iat: nowSec,
+        exp: nowSec + 3600
+      })
+    );
+    const unsigned = `${header}.${claimSet}`;
+    const signer = crypto3.createSign("RSA-SHA256");
+    signer.update(unsigned);
+    signer.end();
+    const signature = base64UrlEncode(signer.sign(creds.private_key));
+    const assertion = `${unsigned}.${signature}`;
+    const resp = await doRtdbFetch(creds.token_uri || "https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: `grant_type=${encodeURIComponent("urn:ietf:params:oauth:grant-type:jwt-bearer")}&assertion=${encodeURIComponent(assertion)}`
+    });
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => "");
+      logger.warn("Firebase service account token exchange failed", {
+        status: resp.status,
+        detail: detail.slice(0, 140)
+      });
+      return null;
+    }
+    const tokenData = await resp.json();
+    if (!tokenData.access_token) return null;
+    syncState.cachedServiceAccessToken = tokenData.access_token;
+    syncState.cachedServiceAccessTokenExpiresAtMs = nowMs + (tokenData.expires_in ?? 3600) * 1e3;
+    return tokenData.access_token;
+  } catch (err) {
+    logger.warn("Firebase service account token signing failed", {
+      error: err instanceof Error ? err.message : String(err)
+    });
+    return null;
+  }
+}
+async function buildRtdbEndpoint(nodePath, authToken) {
+  const base = getRtdbDatabaseUrl();
+  const cleanNode = nodePath.replace(/^\/+/, "");
+  const serviceAccessToken = await getServiceAccountAccessToken();
+  if (serviceAccessToken) {
+    return `${base}/${cleanNode}.json?access_token=${encodeURIComponent(serviceAccessToken)}`;
+  }
+  const secret = getDatabaseSecretFromEnv() || authToken?.trim();
+  const query = secret ? `?auth=${encodeURIComponent(secret)}` : "";
+  return `${base}/${cleanNode}.json${query}`;
+}
+function sanitizeRtdbKey(raw) {
+  return raw.replace(/[.#$/[\]]/g, "_");
+}
+function getRowPrimaryKey(row, idx) {
+  const candidate = row.id ?? row.key ?? row.state ?? row.platform_key;
+  if (candidate !== void 0 && candidate !== null && String(candidate).length > 0) {
+    return sanitizeRtdbKey(String(candidate));
+  }
+  return `row_${idx}`;
+}
+function getPrimaryKeyColumnName(table, validCols) {
+  if (validCols.has("id")) return "id";
+  if (table === "system_settings" && validCols.has("key")) return "key";
+  if (table === "oauth_states" && validCols.has("state")) return "state";
+  if (table === "platform_capabilities" && validCols.has("platform_key")) return "platform_key";
+  return null;
+}
+function readLocalTablesForRtdb(db) {
+  const tables = {};
+  const serializedByTable = /* @__PURE__ */ new Map();
+  for (const table of RTDB_SYNC_TABLES) {
+    try {
+      const rows = db.prepare(`SELECT * FROM ${table}`).all();
+      const map = {};
+      const tableSerialized = /* @__PURE__ */ new Map();
+      rows.forEach((row, idx) => {
+        const key = getRowPrimaryKey(row, idx);
+        const cleanRow = {};
+        for (const [col, val] of Object.entries(row)) {
+          if (val !== void 0) {
+            cleanRow[col] = val;
+          }
+        }
+        map[key] = cleanRow;
+        tableSerialized.set(key, JSON.stringify(cleanRow));
+      });
+      tables[table] = map;
+      serializedByTable.set(table, tableSerialized);
+    } catch {
+    }
+  }
+  return {
+    tables,
+    serializedByTable,
+    meta: {
+      project: "livingtech-brand-agency",
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      userCount: Object.keys(tables.users || {}).length,
+      workspaceCount: Object.keys(tables.workspaces || {}).length,
+      postCount: Object.keys(tables.content_posts || {}).length
+    }
+  };
+}
+function applyRtdbSnapshotToDb(db, tablesPayload) {
+  let restoredRows = 0;
+  const remoteSerialized = /* @__PURE__ */ new Map();
+  db.pragma("foreign_keys = OFF");
+  try {
+    db.transaction(() => {
+      for (const table of RTDB_SYNC_TABLES) {
+        const tableInfo = db.prepare(`PRAGMA table_info(${table})`).all();
+        const validCols = new Set(tableInfo.map((c) => c.name));
+        if (validCols.size === 0) continue;
+        const rawTable = tablesPayload[table];
+        const tableMap = /* @__PURE__ */ new Map();
+        if (!rawTable || typeof rawTable !== "object") {
+          remoteSerialized.set(table, tableMap);
+          continue;
+        }
+        const entries = Array.isArray(rawTable) ? rawTable.map(
+          (r, idx) => r && typeof r === "object" ? [getRowPrimaryKey(r, idx), r] : null
+        ).filter((e) => e !== null) : Object.entries(rawTable).filter(
+          (entry) => Boolean(entry[1] && typeof entry[1] === "object")
+        );
+        const prevTableMap = syncState.lastSyncedSnapshot.get(table);
+        const pkCol = getPrimaryKeyColumnName(table, validCols);
+        const remoteKeys = new Set(entries.map(([k]) => k));
+        if (prevTableMap && pkCol) {
+          for (const [prevKey, prevJson] of prevTableMap.entries()) {
+            if (!remoteKeys.has(prevKey)) {
+              try {
+                const parsedPrev = JSON.parse(prevJson);
+                const pkVal = parsedPrev[pkCol];
+                if (pkVal !== void 0 && pkVal !== null) {
+                  db.prepare(`DELETE FROM ${table} WHERE ${pkCol} = ?`).run(pkVal);
+                }
+              } catch {
+              }
+            }
+          }
+        }
+        for (const [rtdbKey, row] of entries) {
+          const cols = Object.keys(row).filter((col) => validCols.has(col));
+          if (cols.length === 0) continue;
+          const placeholders = cols.map(() => "?").join(", ");
+          const sql = `INSERT OR REPLACE INTO ${table} (${cols.join(", ")}) VALUES (${placeholders})`;
+          const values = cols.map((col) => row[col] === void 0 ? null : row[col]);
+          db.prepare(sql).run(...values);
+          restoredRows += 1;
+          if (pkCol && row[pkCol] !== void 0 && row[pkCol] !== null) {
+            const stored = db.prepare(`SELECT * FROM ${table} WHERE ${pkCol} = ?`).get(row[pkCol]);
+            if (stored) {
+              tableMap.set(rtdbKey, JSON.stringify(stored));
+              continue;
+            }
+          }
+          tableMap.set(rtdbKey, JSON.stringify(row));
+        }
+        remoteSerialized.set(table, tableMap);
+      }
+    })();
+  } finally {
+    db.pragma("foreign_keys = ON");
+  }
+  return { restoredRows, remoteSerialized };
+}
+async function doRtdbFetch(url, init) {
+  const transport = customFetchTransport ?? fetch;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await transport(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function persistDatabaseToRtdb(db, options) {
+  if (!isRtdbSyncEnabled()) return false;
+  if (!syncState.hydrated) {
+    await hydrateDatabaseFromRtdb(db, { authToken: options?.authToken, force: true });
+  }
+  const snapshot = readLocalTablesForRtdb(db);
+  const patchPayload = {};
+  let changedKeys = 0;
+  if (syncState.lastSyncedSnapshot.size === 0) {
+    for (const [table, rowsMap] of Object.entries(snapshot.tables)) {
+      for (const [rtdbKey, rowObj] of Object.entries(rowsMap)) {
+        patchPayload[`tables/${table}/${rtdbKey}`] = rowObj;
+        changedKeys += 1;
+      }
+    }
+  } else {
+    for (const table of RTDB_SYNC_TABLES) {
+      const currentMap = snapshot.serializedByTable.get(table) ?? /* @__PURE__ */ new Map();
+      const prevMap = syncState.lastSyncedSnapshot.get(table) ?? /* @__PURE__ */ new Map();
+      const tableRows = snapshot.tables[table] ?? {};
+      for (const [rtdbKey, serialized] of currentMap.entries()) {
+        if (prevMap.get(rtdbKey) !== serialized) {
+          patchPayload[`tables/${table}/${rtdbKey}`] = tableRows[rtdbKey];
+          changedKeys += 1;
+        }
+      }
+      if (syncState.hydrated) {
+        for (const prevKey of prevMap.keys()) {
+          if (!currentMap.has(prevKey)) {
+            patchPayload[`tables/${table}/${prevKey}`] = null;
+            changedKeys += 1;
+          }
+        }
+      }
+    }
+  }
+  if (changedKeys === 0 && syncState.connected) {
+    return true;
+  }
+  patchPayload["meta"] = snapshot.meta;
+  const endpoint = await buildRtdbEndpoint(RTDB_ROOT_NODE, options?.authToken);
+  try {
+    const resp = await doRtdbFetch(endpoint, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patchPayload)
+    });
+    if (!resp.ok) {
+      const bodyText = await resp.text().catch(() => "");
+      const errorMsg = `Firebase RTDB PATCH failed (HTTP ${resp.status}): ${bodyText.slice(0, 180)}`;
+      syncState.connected = false;
+      syncState.lastError = errorMsg;
+      syncState.lastAttemptMs = Date.now();
+      logger.warn("Firebase RTDB persist skipped", { status: resp.status, detail: bodyText.slice(0, 140) });
+      return false;
+    }
+    syncState.connected = true;
+    syncState.hydrated = true;
+    syncState.lastPersistedAt = snapshot.meta.updatedAt;
+    syncState.lastKnownRemoteUpdatedAt = snapshot.meta.updatedAt;
+    syncState.lastFreshnessCheckMs = Date.now();
+    syncState.lastError = null;
+    syncState.lastAttemptMs = Date.now();
+    syncState.lastSyncedSnapshot = snapshot.serializedByTable;
+    return true;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    syncState.connected = false;
+    syncState.lastError = `Firebase RTDB persist error: ${msg}`;
+    syncState.lastAttemptMs = Date.now();
+    logger.warn("Firebase RTDB persist error", { error: msg });
+    return false;
+  }
+}
+async function hydrateDatabaseFromRtdb(db, options) {
+  if (!isRtdbSyncEnabled()) return false;
+  const now = Date.now();
+  const freshnessInterval = getFreshnessCheckIntervalMs();
+  if (!options?.force) {
+    if (syncState.hydrated && syncState.connected) {
+      if (now - syncState.lastFreshnessCheckMs < freshnessInterval) {
+        return true;
+      }
+      try {
+        const metaEndpoint = await buildRtdbEndpoint(`${RTDB_ROOT_NODE}/meta/updatedAt`, options?.authToken);
+        const metaResp = await doRtdbFetch(metaEndpoint, { method: "GET" });
+        syncState.lastFreshnessCheckMs = Date.now();
+        if (metaResp.ok) {
+          const remoteUpdatedAt = await metaResp.json();
+          if (remoteUpdatedAt && remoteUpdatedAt === syncState.lastKnownRemoteUpdatedAt) {
+            return true;
+          }
+        }
+      } catch {
+        return true;
+      }
+    } else if (!options?.authToken && syncState.lastAttemptMs > 0 && now - syncState.lastAttemptMs < RETRY_BACKOFF_MS) {
+      return syncState.connected;
+    }
+  }
+  if (syncState.inflightHydration) {
+    return syncState.inflightHydration;
+  }
+  syncState.inflightHydration = (async () => {
+    const endpoint = await buildRtdbEndpoint(RTDB_ROOT_NODE, options?.authToken);
+    try {
+      const resp = await doRtdbFetch(endpoint, { method: "GET" });
+      if (!resp.ok) {
+        const bodyText = await resp.text().catch(() => "");
+        syncState.connected = false;
+        syncState.lastError = `Firebase RTDB GET failed (HTTP ${resp.status}): ${bodyText.slice(0, 180)}`;
+        syncState.lastAttemptMs = Date.now();
+        return false;
+      }
+      const rootData = await resp.json();
+      const tablesData = rootData?.tables;
+      if (tablesData && typeof tablesData === "object" && Object.keys(tablesData).length > 0) {
+        const { restoredRows, remoteSerialized } = applyRtdbSnapshotToDb(db, tablesData);
+        syncState.connected = true;
+        syncState.hydrated = true;
+        syncState.lastHydratedAt = (/* @__PURE__ */ new Date()).toISOString();
+        syncState.lastFreshnessCheckMs = Date.now();
+        syncState.lastKnownRemoteUpdatedAt = rootData?.meta?.updatedAt ?? syncState.lastHydratedAt;
+        syncState.lastSyncedSnapshot = remoteSerialized;
+        syncState.lastError = null;
+        syncState.lastAttemptMs = Date.now();
+        logger.info("Hydrated application state from Firebase Realtime Database", { restoredRows });
+        return true;
+      }
+      syncState.connected = true;
+      syncState.hydrated = true;
+      syncState.lastHydratedAt = (/* @__PURE__ */ new Date()).toISOString();
+      syncState.lastFreshnessCheckMs = Date.now();
+      syncState.lastError = null;
+      syncState.lastAttemptMs = Date.now();
+      await persistDatabaseToRtdb(db, options);
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      syncState.connected = false;
+      syncState.lastError = `Firebase RTDB hydrate error: ${msg}`;
+      syncState.lastAttemptMs = Date.now();
+      return false;
+    } finally {
+      syncState.inflightHydration = null;
+    }
+  })();
+  return syncState.inflightHydration;
+}
+async function ensureRtdbHydrated(db, options) {
+  return hydrateDatabaseFromRtdb(db, options);
+}
+
+// server/services/authService.ts
+import crypto4 from "node:crypto";
 var SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1e3;
 var SESSION_RENEW_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1e3;
 function hashSessionToken(token) {
-  return crypto3.createHmac("sha256", env.SESSION_SECRET).update(token).digest("hex");
+  return crypto4.createHmac("sha256", env.SESSION_SECRET).update(token).digest("hex");
 }
 function passwordFingerprint(passwordHash) {
   const raw = typeof passwordHash === "string" ? passwordHash : "";
-  return crypto3.createHash("sha256").update(raw).digest("hex").slice(0, 16);
+  return crypto4.createHash("sha256").update(raw).digest("hex").slice(0, 16);
 }
 function signSessionToken(payload) {
   const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
-  const sig = crypto3.createHmac("sha256", env.SESSION_SECRET).update(encoded).digest("base64url");
+  const sig = crypto4.createHmac("sha256", env.SESSION_SECRET).update(encoded).digest("base64url");
   return `lt1.${encoded}.${sig}`;
 }
 function verifySignedSessionToken(rawToken) {
@@ -4039,10 +4537,10 @@ function verifySignedSessionToken(rawToken) {
   if (parts.length !== 3) return null;
   const [, encoded, providedSig] = parts;
   if (!encoded || !providedSig) return null;
-  const expectedSig = crypto3.createHmac("sha256", env.SESSION_SECRET).update(encoded).digest("base64url");
+  const expectedSig = crypto4.createHmac("sha256", env.SESSION_SECRET).update(encoded).digest("base64url");
   const a = Buffer.from(providedSig, "utf8");
   const b = Buffer.from(expectedSig, "utf8");
-  if (a.length !== b.length || !crypto3.timingSafeEqual(a, b)) return null;
+  if (a.length !== b.length || !crypto4.timingSafeEqual(a, b)) return null;
   try {
     const parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
     if (typeof parsed.sid === "string" && typeof parsed.uid === "string" && typeof parsed.email === "string" && typeof parsed.pfp === "string" && typeof parsed.exp === "number" && parsed.exp > Date.now()) {
@@ -4152,7 +4650,7 @@ function listUserWorkspaces(db, userId) {
 }
 function createSession(db, userId) {
   const userRow = db.prepare("SELECT email, password_hash FROM users WHERE id = ?").get(userId);
-  const sessionId = crypto3.randomUUID();
+  const sessionId = crypto4.randomUUID();
   const nowMs = Date.now();
   const now = new Date(nowMs).toISOString();
   const expMs = nowMs + SESSION_TTL_MS;
@@ -4163,7 +4661,7 @@ function createSession(db, userId) {
     email: userRow.email,
     pfp: passwordFingerprint(userRow.password_hash),
     exp: expMs
-  }) : crypto3.randomBytes(32).toString("base64url");
+  }) : crypto4.randomBytes(32).toString("base64url");
   const tokenHash = hashSessionToken(rawToken);
   db.prepare(`
     INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at)
@@ -4221,7 +4719,7 @@ function recordAuditLog(db, params) {
     INSERT INTO audit_logs (id, actor_user_id, actor_email, workspace_id, action, resource_type, resource_id, metadata_json, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    crypto3.randomUUID(),
+    crypto4.randomUUID(),
     params.actorUserId ?? null,
     params.actorEmail ?? null,
     params.workspaceId ?? null,
@@ -4248,14 +4746,14 @@ function registerUserWithWorkspace(db, input) {
     throw new Error("An account with this email already exists.");
   }
   const now = (/* @__PURE__ */ new Date()).toISOString();
-  const userId = crypto3.randomUUID();
-  const orgId = crypto3.randomUUID();
-  const wsId = crypto3.randomUUID();
+  const userId = crypto4.randomUUID();
+  const orgId = crypto4.randomUUID();
+  const wsId = crypto4.randomUUID();
   const wsName = (input.workspaceName || `${input.fullName.split(" ")[0]}'s Brand Workspace`).trim();
   const slugBase = slugifyWorkspaceName(wsName);
-  const uniqueSlug = `${slugBase}-${crypto3.randomBytes(3).toString("hex")}`;
+  const uniqueSlug = `${slugBase}-${crypto4.randomBytes(3).toString("hex")}`;
   const initialCredits = 0;
-  const verifyToken = crypto3.randomBytes(20).toString("hex");
+  const verifyToken = crypto4.randomBytes(20).toString("hex");
   const tx = db.transaction(() => {
     db.prepare(`
       INSERT INTO users (id, auth_provider, email, password_hash, full_name, role_slug, email_verified, status, timezone, preferred_language, created_at, updated_at)
@@ -4274,20 +4772,20 @@ function registerUserWithWorkspace(db, input) {
         id, workspace_id, brand_name, logo_url, primary_color, secondary_color, accent_color,
         business_description, industry, target_audience, tone_of_voice, preferred_language, timezone, created_at, updated_at
       ) VALUES (?, ?, ?, '', '#0052FF', '#071436', '#F59E0B', '', ?, '', 'Professional & Modern', 'en', 'UTC', ?, ?)
-    `).run(crypto3.randomUUID(), wsId, wsName, input.industry || "", now, now);
+    `).run(crypto4.randomUUID(), wsId, wsName, input.industry || "", now, now);
     db.prepare(`
       INSERT INTO workspace_members (id, workspace_id, user_id, invited_email, role_slug, status, invited_by, created_at, updated_at)
       VALUES (?, ?, ?, ?, 'workspace_admin', 'active', ?, ?, ?)
-    `).run(crypto3.randomUUID(), wsId, userId, email, userId, now, now);
+    `).run(crypto4.randomUUID(), wsId, userId, email, userId, now, now);
     db.prepare(`
       INSERT INTO notifications (id, workspace_id, user_id, category, title, body, is_read, created_at, updated_at)
       VALUES (?, ?, ?, 'billing', 'Select Your Subscription Plan', 'Your workspace is ready. Visit Billing & Subscriptions to choose Basic, Pro, or Enterprise and unlock your package modules.', 0, ?, ?)
-    `).run(crypto3.randomUUID(), wsId, userId, now, now);
+    `).run(crypto4.randomUUID(), wsId, userId, now, now);
     const verifyExpires = new Date(Date.now() + 24 * 3600 * 1e3).toISOString();
     db.prepare(`
       INSERT INTO auth_tokens (id, user_id, token_type, token_value, expires_at, created_at)
       VALUES (?, ?, 'email_verify', ?, ?, ?)
-    `).run(crypto3.randomUUID(), userId, verifyToken, verifyExpires, now);
+    `).run(crypto4.randomUUID(), userId, verifyToken, verifyExpires, now);
     recordAuditLog(db, {
       actorUserId: userId,
       actorEmail: email,
@@ -4343,12 +4841,12 @@ function syncFirebaseGoogleUser(db, input) {
   const now = (/* @__PURE__ */ new Date()).toISOString();
   let row = db.prepare("SELECT * FROM users WHERE external_uid = ? OR email = ?").get(input.externalUid, email);
   if (!row) {
-    const userId = crypto3.randomUUID();
-    const orgId = crypto3.randomUUID();
-    const wsId = crypto3.randomUUID();
+    const userId = crypto4.randomUUID();
+    const orgId = crypto4.randomUUID();
+    const wsId = crypto4.randomUUID();
     const role = email === "livingstoneedu64@gmail.com" ? "super_admin" : "customer";
     const wsName = `${input.fullName.split(" ")[0]}'s Agency Workspace`;
-    const uniqueSlug = `${slugifyWorkspaceName(wsName)}-${crypto3.randomBytes(3).toString("hex")}`;
+    const uniqueSlug = `${slugifyWorkspaceName(wsName)}-${crypto4.randomBytes(3).toString("hex")}`;
     const enterprisePlan = role === "super_admin" ? db.prepare("SELECT id FROM subscription_plans WHERE code = 'enterprise'").get() : void 0;
     const periodEnd = new Date(Date.now() + 365 * 86400 * 1e3).toISOString();
     db.transaction(() => {
@@ -4369,16 +4867,16 @@ function syncFirebaseGoogleUser(db, input) {
           id, workspace_id, brand_name, logo_url, primary_color, secondary_color, accent_color,
           business_description, industry, target_audience, tone_of_voice, preferred_language, timezone, created_at, updated_at
         ) VALUES (?, ?, ?, '', '#0052FF', '#071436', '#F59E0B', '', '', '', 'Executive & Authoritative', 'en', 'UTC', ?, ?)
-      `).run(crypto3.randomUUID(), wsId, wsName, now, now);
+      `).run(crypto4.randomUUID(), wsId, wsName, now, now);
       db.prepare(`
         INSERT INTO workspace_members (id, workspace_id, user_id, invited_email, role_slug, status, invited_by, created_at, updated_at)
         VALUES (?, ?, ?, ?, 'workspace_admin', 'active', ?, ?, ?)
-      `).run(crypto3.randomUUID(), wsId, userId, email, userId, now, now);
+      `).run(crypto4.randomUUID(), wsId, userId, email, userId, now, now);
       if (enterprisePlan) {
         db.prepare(`
           INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
           VALUES (?, ?, ?, ?, 'active', 'annual', ?, ?, ?, ?)
-        `).run(crypto3.randomUUID(), orgId, wsId, enterprisePlan.id, now, periodEnd, now, now);
+        `).run(crypto4.randomUUID(), orgId, wsId, enterprisePlan.id, now, periodEnd, now, now);
       }
     })();
     row = db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
@@ -4417,13 +4915,13 @@ function createPasswordResetToken(db, emailInput) {
   if (!user) {
     return {};
   }
-  const resetToken = crypto3.randomBytes(20).toString("hex");
+  const resetToken = crypto4.randomBytes(20).toString("hex");
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const expiresAt = new Date(Date.now() + 3600 * 1e3).toISOString();
   db.prepare(`
     INSERT INTO auth_tokens (id, user_id, token_type, token_value, expires_at, created_at)
     VALUES (?, ?, 'password_reset', ?, ?, ?)
-  `).run(crypto3.randomUUID(), user.id, resetToken, expiresAt, now);
+  `).run(crypto4.randomUUID(), user.id, resetToken, expiresAt, now);
   recordAuditLog(db, {
     actorUserId: user.id,
     actorEmail: user.email,
@@ -4722,11 +5220,11 @@ function createWorkspaceFeatureGuard(db, feature) {
 
 // server/services/aiService.ts
 import { GoogleGenAI as GoogleGenAI2, Type } from "@google/genai";
-import crypto5 from "node:crypto";
+import crypto6 from "node:crypto";
 
 // server/ai/geminiClient.ts
 import { GoogleGenAI } from "@google/genai";
-import crypto4 from "node:crypto";
+import crypto5 from "node:crypto";
 var GEMINI_PRIMARY_MODEL = "gemini-3.5-flash-lite";
 var GEMINI_FALLBACK_MODELS = ["gemini-3.1-flash-lite"];
 var testTransportOverride = null;
@@ -4901,7 +5399,7 @@ async function runStructuredGeminiModule(db, params) {
             prompt_tokens, completion_tokens, status, error_message, latency_ms, created_at
           ) VALUES (?, ?, ?, ?, ?, 0, 0, 0, 'failed', ?, ?, ?)`
         ).run(
-          crypto4.randomUUID(),
+          crypto5.randomUUID(),
           params.workspaceId,
           params.userId,
           params.moduleKey,
@@ -4936,7 +5434,7 @@ async function runStructuredGeminiModule(db, params) {
         prompt_tokens, completion_tokens, status, error_message, latency_ms, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', NULL, ?, ?)`
     ).run(
-      crypto4.randomUUID(),
+      crypto5.randomUUID(),
       params.workspaceId,
       params.userId,
       params.moduleKey,
@@ -4953,7 +5451,7 @@ async function runStructuredGeminiModule(db, params) {
         prompt_tokens, completion_tokens, status, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?)`
     ).run(
-      crypto4.randomUUID(),
+      crypto5.randomUUID(),
       params.workspaceId,
       params.userId,
       legacyFeature,
@@ -5125,14 +5623,14 @@ Return a structured JSON payload containing:
     const cleanHashtags = normalizeHashtags(parsed.hashtags || []);
     const cleanVariants = Array.isArray(parsed.variants) ? parsed.variants.slice(0, 4) : [];
     const usage = response.usageMetadata;
-    const suggestionId = crypto5.randomUUID();
+    const suggestionId = crypto6.randomUUID();
     db.transaction(() => {
       db.prepare("UPDATE workspaces SET ai_credits_balance = ai_credits_balance - ?, updated_at = ? WHERE id = ?").run(cost, now, params.workspaceId);
       db.prepare(`
         INSERT INTO ai_usage (id, workspace_id, user_id, feature, model_name, credits_used, prompt_tokens, completion_tokens, status, created_at, updated_at)
         VALUES (?, ?, ?, 'content_studio', ?, ?, ?, ?, 'completed', ?, ?)
       `).run(
-        crypto5.randomUUID(),
+        crypto6.randomUUID(),
         params.workspaceId,
         params.userId,
         modelUsed,
@@ -5186,7 +5684,7 @@ Return a structured JSON payload containing:
     db.prepare(`
       INSERT INTO ai_usage (id, workspace_id, user_id, feature, model_name, credits_used, prompt_tokens, completion_tokens, status, created_at, updated_at)
       VALUES (?, ?, ?, 'content_studio', ?, 0, 0, 0, 'failed', ?, ?)
-    `).run(crypto5.randomUUID(), params.workspaceId, params.userId, PRIMARY_MODEL, now, now);
+    `).run(crypto6.randomUUID(), params.workspaceId, params.userId, PRIMARY_MODEL, now, now);
     throw formatGeminiError(err);
   }
 }
@@ -5292,7 +5790,7 @@ Target Platforms: ${params.platforms.join(", ")}${socialContextBlock}`;
       INSERT INTO ai_usage (id, workspace_id, user_id, feature, model_name, credits_used, prompt_tokens, completion_tokens, status, created_at, updated_at)
       VALUES (?, ?, ?, 'content_strategy', ?, ?, ?, ?, 'completed', ?, ?)
     `).run(
-      crypto5.randomUUID(),
+      crypto6.randomUUID(),
       params.workspaceId,
       params.userId,
       modelUsed,
@@ -5311,17 +5809,17 @@ Target Platforms: ${params.platforms.join(", ")}${socialContextBlock}`;
 }
 
 // server/services/oauthService.ts
-import crypto6 from "node:crypto";
+import crypto7 from "node:crypto";
 var memoryOAuthStates = /* @__PURE__ */ new Map();
 function generatePkcePair() {
-  const codeVerifier = crypto6.randomBytes(32).toString("base64url");
-  const codeChallenge = crypto6.createHash("sha256").update(codeVerifier).digest("base64url");
+  const codeVerifier = crypto7.randomBytes(32).toString("base64url");
+  const codeChallenge = crypto7.createHash("sha256").update(codeVerifier).digest("base64url");
   return { codeVerifier, codeChallenge };
 }
 function encryptSocialToken(plaintext) {
-  const key = crypto6.createHash("sha256").update(env.TOKEN_ENCRYPTION_KEY).digest();
-  const iv = crypto6.randomBytes(12);
-  const cipher = crypto6.createCipheriv("aes-256-gcm", key, iv);
+  const key = crypto7.createHash("sha256").update(env.TOKEN_ENCRYPTION_KEY).digest();
+  const iv = crypto7.randomBytes(12);
+  const cipher = crypto7.createCipheriv("aes-256-gcm", key, iv);
   const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
   return `${iv.toString("hex")}:${tag.toString("hex")}:${encrypted.toString("hex")}`;
@@ -5332,8 +5830,8 @@ function decryptSocialToken(ciphertext) {
     throw new Error("Malformed encrypted token payload.");
   }
   const [ivHex, tagHex, encHex] = parts;
-  const key = crypto6.createHash("sha256").update(env.TOKEN_ENCRYPTION_KEY).digest();
-  const decipher = crypto6.createDecipheriv("aes-256-gcm", key, Buffer.from(ivHex, "hex"));
+  const key = crypto7.createHash("sha256").update(env.TOKEN_ENCRYPTION_KEY).digest();
+  const decipher = crypto7.createDecipheriv("aes-256-gcm", key, Buffer.from(ivHex, "hex"));
   decipher.setAuthTag(Buffer.from(tagHex, "hex"));
   const decrypted = Buffer.concat([decipher.update(Buffer.from(encHex, "hex")), decipher.final()]);
   return decrypted.toString("utf8");
@@ -5396,7 +5894,7 @@ function recordOAuthConnectionLog(db, params) {
       event_type, status, message, error_code, metadata_json, created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    crypto6.randomUUID(),
+    crypto7.randomUUID(),
     params.workspaceId ?? null,
     params.userId ?? null,
     params.platformKey,
@@ -5527,7 +6025,7 @@ function buildOfficialOAuthUrl(db, params) {
       requestedPermissions
     };
   }
-  const state = crypto6.randomBytes(24).toString("hex");
+  const state = crypto7.randomBytes(24).toString("hex");
   const pkce = provider.supportsPkce ? generatePkcePair() : void 0;
   const expiresAtMs = Date.now() + 15 * 60 * 1e3;
   const now = (/* @__PURE__ */ new Date()).toISOString();
@@ -5764,7 +6262,7 @@ async function handleOAuthCallbackForDiscovery(db, params) {
     } else {
       discoveredAccounts = (await provider.discoverAccounts(tokenBundle.accessToken)).accounts;
     }
-    const discoverySessionId = crypto6.randomUUID();
+    const discoverySessionId = crypto7.randomUUID();
     const selectionExpiry = new Date(Date.now() + 15 * 60 * 1e3).toISOString();
     const encryptedPendingTokens = encryptSocialToken(
       JSON.stringify({
@@ -5964,7 +6462,7 @@ function connectSelectedDiscoveredAccounts(db, params) {
             title, caption, hashtags_json, campaign_tag, status, published_at, created_at, updated_at
           ) VALUES (?, ?, ?, ?, ?, ?, '[]', 'synced_profile_context', 'published', ?, ?, ?)
         `).run(
-          crypto6.randomUUID(),
+          crypto7.randomUUID(),
           params.workspaceId,
           params.userId,
           platformKey,
@@ -5989,7 +6487,7 @@ function connectSelectedDiscoveredAccounts(db, params) {
             impressions, engagements, clicks, followers_total, is_demo, created_at, updated_at
           ) VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?, 0, ?, ?)
         `).run(
-          crypto6.randomUUID(),
+          crypto7.randomUUID(),
           params.workspaceId,
           saved.accountId,
           platformKey,
@@ -6038,7 +6536,7 @@ function persistOAuthSocialAccount(db, params) {
   const encryptedAccess = encryptSocialToken(params.tokens.accessToken);
   const encryptedRefresh = params.tokens.refreshToken ? encryptSocialToken(params.tokens.refreshToken) : null;
   const existing = db.prepare("SELECT id FROM social_accounts WHERE workspace_id = ? AND platform_id = ? AND external_account_id = ?").get(params.workspaceId, platformRow.id, params.identity.externalAccountId);
-  const accountId = existing?.id || crypto6.randomUUID();
+  const accountId = existing?.id || crypto7.randomUUID();
   db.transaction(() => {
     if (existing) {
       db.prepare(`
@@ -6123,7 +6621,7 @@ function persistOAuthSocialAccount(db, params) {
           expires_at, refresh_expires_at, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        crypto6.randomUUID(),
+        crypto7.randomUUID(),
         accountId,
         params.workspaceId,
         params.userId,
@@ -6166,7 +6664,7 @@ function persistOAuthSocialAccount(db, params) {
       INSERT INTO notifications (id, workspace_id, user_id, category, title, body, is_read, created_at, updated_at)
       VALUES (?, ?, ?, 'publishing', ?, ?, 0, ?, ?)
     `).run(
-      crypto6.randomUUID(),
+      crypto7.randomUUID(),
       params.workspaceId,
       params.userId,
       `${platformRow.display_name} Connected`,
@@ -6358,7 +6856,7 @@ async function syncSocialAccountData(db, workspaceId, accountId, actorUserId) {
         db.prepare(`
           INSERT INTO platform_sync_logs (id, workspace_id, social_account_id, platform_key, sync_type, status, items_synced, error_message, created_at)
           VALUES (?, ?, ?, ?, 'full', 'failed', 0, ?, ?)
-        `).run(crypto6.randomUUID(), workspaceId, accountId, platformKey, refreshed.message, now);
+        `).run(crypto7.randomUUID(), workspaceId, accountId, platformKey, refreshed.message, now);
         return {
           status: "failed",
           itemsSynced: 0,
@@ -6442,7 +6940,7 @@ async function syncSocialAccountData(db, workspaceId, accountId, actorUserId) {
             impressions, engagements, clicks, followers_total, is_demo, created_at, updated_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
         `).run(
-          crypto6.randomUUID(),
+          crypto7.randomUUID(),
           workspaceId,
           accountId,
           platformKey,
@@ -6460,7 +6958,7 @@ async function syncSocialAccountData(db, workspaceId, accountId, actorUserId) {
           id, workspace_id, social_account_id, platform_key, sync_type,
           status, items_synced, rate_limit_remaining, error_message, created_at
         ) VALUES (?, ?, ?, ?, 'full', 'succeeded', ?, ?, NULL, ?)
-      `).run(crypto6.randomUUID(), workspaceId, accountId, platformKey, itemsSynced, synced.rateLimitRemaining, now);
+      `).run(crypto7.randomUUID(), workspaceId, accountId, platformKey, itemsSynced, synced.rateLimitRemaining, now);
       db.prepare("UPDATE social_platforms SET last_health_check_at = ?, last_api_error = NULL, updated_at = ? WHERE key = ?").run(
         now,
         now,
@@ -6498,7 +6996,7 @@ async function syncSocialAccountData(db, workspaceId, accountId, actorUserId) {
           id, workspace_id, social_account_id, platform_key, sync_type,
           status, items_synced, rate_limit_remaining, error_message, created_at
         ) VALUES (?, ?, ?, ?, 'full', ?, 0, NULL, ?, ?)
-      `).run(crypto6.randomUUID(), workspaceId, accountId, platformKey, syncStatus, safeMsg, now);
+      `).run(crypto7.randomUUID(), workspaceId, accountId, platformKey, syncStatus, safeMsg, now);
       db.prepare("UPDATE social_platforms SET last_health_check_at = ?, last_api_error = ?, updated_at = ? WHERE key = ?").run(
         now,
         safeMsg.slice(0, 300),
@@ -6671,7 +7169,7 @@ function listOAuthConnectionLogs(db, options) {
   }));
 }
 function recordPlatformWebhookEvent(db, params) {
-  const id = crypto6.randomUUID();
+  const id = crypto7.randomUUID();
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const safePayload = redactSensitiveTokens(JSON.stringify(params.payload));
   db.prepare(`
@@ -6801,10 +7299,18 @@ function createApiRouter(db) {
   router.use("/workspaces/:wid/analytics", requireAuth, requireWorkspaceMember, requireFeature("analytics"));
   router.use("/workspaces/:wid/media", requireAuth, requireWorkspaceMember, requireFeature("media"));
   router.use("/workspaces/:wid/members", requireAuth, requireWorkspaceMember, requireFeature("team"));
-  router.get("/health", (_req, res) => {
+  router.get("/health", async (req, res) => {
+    const forceProbe = req.query.probe === "1" || req.query.probe === "true";
+    const current = getRtdbStatus();
+    if (current.enabled && (!current.connected || forceProbe)) {
+      await hydrateDatabaseFromRtdb(db, { force: true }).catch(() => false);
+    }
+    const rtdb = getRtdbStatus();
     res.json({
       status: "ok",
-      storage: "sql",
+      storage: "firebase-rtdb",
+      databaseURL: rtdb.databaseURL,
+      rtdb,
       service: "livingtech-brand-agency-api",
       timestamp: (/* @__PURE__ */ new Date()).toISOString()
     });
@@ -6934,12 +7440,12 @@ function createApiRouter(db) {
   });
   router.post("/auth/resend-verification", requireAuth, (req, res) => {
     const now = (/* @__PURE__ */ new Date()).toISOString();
-    const token = crypto7.randomBytes(20).toString("hex");
+    const token = crypto8.randomBytes(20).toString("hex");
     const expires = new Date(Date.now() + 24 * 3600 * 1e3).toISOString();
     db.prepare(`
       INSERT INTO auth_tokens (id, user_id, token_type, token_value, expires_at, created_at)
       VALUES (?, ?, 'email_verify', ?, ?, ?)
-    `).run(crypto7.randomUUID(), req.user.id, token, expires, now);
+    `).run(crypto8.randomUUID(), req.user.id, token, expires, now);
     res.json({
       message: "Verification token issued.",
       ...process.env.NODE_ENV !== "production" ? { previewVerificationToken: token } : {}
@@ -7068,15 +7574,15 @@ function createApiRouter(db) {
       const now = (/* @__PURE__ */ new Date()).toISOString();
       let org = db.prepare("SELECT id FROM organisations WHERE owner_user_id = ? LIMIT 1").get(req.user.id);
       if (!org) {
-        const orgId = crypto7.randomUUID();
+        const orgId = crypto8.randomUUID();
         db.prepare(`
           INSERT INTO organisations (id, owner_user_id, name, slug, billing_email, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(orgId, req.user.id, payload.name, `${slugifyWorkspaceName(payload.name)}-${crypto7.randomBytes(3).toString("hex")}`, req.user.email, now, now);
+        `).run(orgId, req.user.id, payload.name, `${slugifyWorkspaceName(payload.name)}-${crypto8.randomBytes(3).toString("hex")}`, req.user.email, now, now);
         org = { id: orgId };
       }
-      const wsId = crypto7.randomUUID();
-      const slug = `${slugifyWorkspaceName(payload.name)}-${crypto7.randomBytes(3).toString("hex")}`;
+      const wsId = crypto8.randomUUID();
+      const slug = `${slugifyWorkspaceName(payload.name)}-${crypto8.randomBytes(3).toString("hex")}`;
       const starterPlan = db.prepare("SELECT id FROM subscription_plans WHERE code = 'basic'").get();
       const periodEnd = new Date(Date.now() + 30 * 86400 * 1e3).toISOString();
       db.transaction(() => {
@@ -7090,7 +7596,7 @@ function createApiRouter(db) {
             business_description, industry, target_audience, tone_of_voice, preferred_language, timezone, created_at, updated_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Executive & Authoritative', ?, ?, ?, ?)
         `).run(
-          crypto7.randomUUID(),
+          crypto8.randomUUID(),
           wsId,
           payload.brandName.trim(),
           payload.logoUrl,
@@ -7108,11 +7614,11 @@ function createApiRouter(db) {
         db.prepare(`
           INSERT INTO workspace_members (id, workspace_id, user_id, invited_email, role_slug, status, invited_by, created_at, updated_at)
           VALUES (?, ?, ?, ?, 'workspace_admin', 'active', ?, ?, ?)
-        `).run(crypto7.randomUUID(), wsId, req.user.id, req.user.email, req.user.id, now, now);
+        `).run(crypto8.randomUUID(), wsId, req.user.id, req.user.email, req.user.id, now, now);
         db.prepare(`
           INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
           VALUES (?, ?, ?, ?, 'trialing', 'monthly', ?, ?, ?, ?)
-        `).run(crypto7.randomUUID(), org.id, wsId, starterPlan.id, now, periodEnd, now, now);
+        `).run(crypto8.randomUUID(), org.id, wsId, starterPlan.id, now, periodEnd, now, now);
         recordAuditLog(db, {
           actorUserId: req.user.id,
           actorEmail: req.user.email,
@@ -7474,7 +7980,7 @@ function createApiRouter(db) {
       const wid = String(req.params.wid);
       const payload = CreatePostSchema.parse(req.body);
       const now = (/* @__PURE__ */ new Date()).toISOString();
-      const postId = crypto7.randomUUID();
+      const postId = crypto8.randomUUID();
       const effectiveStatus = payload.scheduledFor && payload.status === "draft" ? "scheduled" : payload.status;
       db.transaction(() => {
         db.prepare(`
@@ -7497,13 +8003,13 @@ function createApiRouter(db) {
           now
         );
         if (effectiveStatus === "scheduled" || effectiveStatus === "pending") {
-          const scheduleId = crypto7.randomUUID();
+          const scheduleId = crypto8.randomUUID();
           const runAt = payload.scheduledFor || now;
           db.prepare(`
             INSERT INTO publishing_schedules (id, workspace_id, content_post_id, scheduled_at, timezone, is_active, created_at, updated_at)
             VALUES (?, ?, ?, ?, 'UTC', 1, ?, ?)
           `).run(scheduleId, wid, postId, runAt, now, now);
-          const jobId = crypto7.randomUUID();
+          const jobId = crypto8.randomUUID();
           db.prepare(`
             INSERT INTO publishing_jobs (id, workspace_id, schedule_id, content_post_id, platform_key, job_status, attempt_count, max_attempts, run_at, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, 'queued', 0, 3, ?, ?, ?)
@@ -7511,7 +8017,7 @@ function createApiRouter(db) {
           db.prepare(`
             INSERT INTO publishing_logs (id, publishing_job_id, workspace_id, log_level, message, created_at, updated_at)
             VALUES (?, ?, ?, 'info', 'Post added to Auto Publisher queue.', ?, ?)
-          `).run(crypto7.randomUUID(), jobId, wid, now, now);
+          `).run(crypto8.randomUUID(), jobId, wid, now, now);
         }
         recordAuditLog(db, {
           actorUserId: req.user.id,
@@ -7612,7 +8118,7 @@ function createApiRouter(db) {
       if (action === "cancel") {
         db.transaction(() => {
           db.prepare("UPDATE publishing_jobs SET job_status = 'cancelled', updated_at = ? WHERE id = ?").run(now, jobId);
-          db.prepare("INSERT INTO publishing_logs (id, publishing_job_id, workspace_id, log_level, message, created_at, updated_at) VALUES (?, ?, ?, 'warn', 'Job cancelled by workspace user.', ?, ?)").run(crypto7.randomUUID(), jobId, wid, now, now);
+          db.prepare("INSERT INTO publishing_logs (id, publishing_job_id, workspace_id, log_level, message, created_at, updated_at) VALUES (?, ?, ?, 'warn', 'Job cancelled by workspace user.', ?, ?)").run(crypto8.randomUUID(), jobId, wid, now, now);
         })();
         return res.json({ status: "cancelled" });
       }
@@ -7620,7 +8126,7 @@ function createApiRouter(db) {
         db.transaction(() => {
           db.prepare("UPDATE publishing_jobs SET job_status = 'queued', last_error = NULL, updated_at = ? WHERE id = ?").run(now, jobId);
           db.prepare("UPDATE content_posts SET status = 'scheduled', failure_reason = NULL, updated_at = ? WHERE id = ?").run(now, job.content_post_id);
-          db.prepare("INSERT INTO publishing_logs (id, publishing_job_id, workspace_id, log_level, message, created_at, updated_at) VALUES (?, ?, ?, 'info', 'Job re-queued for next Auto Publisher dispatch cycle.', ?, ?)").run(crypto7.randomUUID(), jobId, wid, now, now);
+          db.prepare("INSERT INTO publishing_logs (id, publishing_job_id, workspace_id, log_level, message, created_at, updated_at) VALUES (?, ?, ?, 'info', 'Job re-queued for next Auto Publisher dispatch cycle.', ?, ?)").run(crypto8.randomUUID(), jobId, wid, now, now);
         })();
         return res.json({ status: "queued" });
       }
@@ -7635,14 +8141,14 @@ function createApiRouter(db) {
         db.transaction(() => {
           db.prepare("UPDATE publishing_jobs SET job_status = 'failed', attempt_count = attempt_count + 1, last_error = ?, updated_at = ? WHERE id = ?").run(errMsg, now, jobId);
           db.prepare("UPDATE content_posts SET status = 'failed', failure_reason = ?, updated_at = ? WHERE id = ?").run(errMsg, now, job.content_post_id);
-          db.prepare("INSERT INTO publishing_logs (id, publishing_job_id, workspace_id, log_level, message, created_at, updated_at) VALUES (?, ?, ?, 'error', ?, ?, ?)").run(crypto7.randomUUID(), jobId, wid, errMsg, now, now);
+          db.prepare("INSERT INTO publishing_logs (id, publishing_job_id, workspace_id, log_level, message, created_at, updated_at) VALUES (?, ?, ?, 'error', ?, ?, ?)").run(crypto8.randomUUID(), jobId, wid, errMsg, now, now);
         })();
         return res.status(422).json({ error: errMsg, status: "failed" });
       }
       db.transaction(() => {
         db.prepare("UPDATE publishing_jobs SET job_status = 'succeeded', attempt_count = attempt_count + 1, completed_at = ?, updated_at = ? WHERE id = ?").run(now, now, jobId);
         db.prepare("UPDATE content_posts SET status = 'published', published_at = ?, updated_at = ? WHERE id = ?").run(now, now, job.content_post_id);
-        db.prepare("INSERT INTO publishing_logs (id, publishing_job_id, workspace_id, log_level, message, created_at, updated_at) VALUES (?, ?, ?, 'info', 'Published to connected official account.', ?, ?)").run(crypto7.randomUUID(), jobId, wid, now, now);
+        db.prepare("INSERT INTO publishing_logs (id, publishing_job_id, workspace_id, log_level, message, created_at, updated_at) VALUES (?, ?, ?, 'info', 'Published to connected official account.', ?, ?)").run(crypto8.randomUUID(), jobId, wid, now, now);
       })();
       return res.json({ status: "succeeded" });
     } catch (err) {
@@ -7744,7 +8250,7 @@ function createApiRouter(db) {
         scheduledFor: z2.string().nullable().optional()
       }).parse(req.body);
       const now = (/* @__PURE__ */ new Date()).toISOString();
-      const postId = crypto7.randomUUID();
+      const postId = crypto8.randomUUID();
       const cta = String(existing.call_to_action || "").trim();
       const fullCaption = cta ? `${String(existing.post_copy).trim()}
 
@@ -7770,12 +8276,12 @@ ${cta}` : String(existing.post_copy).trim();
           now
         );
         if (payload.status === "scheduled" && runAt) {
-          const scheduleId = crypto7.randomUUID();
+          const scheduleId = crypto8.randomUUID();
           db.prepare(`
             INSERT INTO publishing_schedules (id, workspace_id, content_post_id, scheduled_at, timezone, is_active, created_at, updated_at)
             VALUES (?, ?, ?, ?, 'UTC', 1, ?, ?)
           `).run(scheduleId, wid, postId, runAt, now, now);
-          const jobId = crypto7.randomUUID();
+          const jobId = crypto8.randomUUID();
           db.prepare(`
             INSERT INTO publishing_jobs (id, workspace_id, schedule_id, content_post_id, platform_key, job_status, attempt_count, max_attempts, run_at, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, 'queued', 0, 3, ?, ?, ?)
@@ -7783,7 +8289,7 @@ ${cta}` : String(existing.post_copy).trim();
           db.prepare(`
             INSERT INTO publishing_logs (id, publishing_job_id, workspace_id, log_level, message, created_at, updated_at)
             VALUES (?, ?, ?, 'info', 'AI Studio suggestion promoted and added to Auto Publisher queue.', ?, ?)
-          `).run(crypto7.randomUUID(), jobId, wid, now, now);
+          `).run(crypto8.randomUUID(), jobId, wid, now, now);
         }
         db.prepare(`
           UPDATE ai_content_suggestions
@@ -7886,7 +8392,7 @@ ${cta}` : String(existing.post_copy).trim();
         folder: z2.string().min(1).max(64).default("General")
       }).parse(req.body);
       const now = (/* @__PURE__ */ new Date()).toISOString();
-      const id = crypto7.randomUUID();
+      const id = crypto8.randomUUID();
       db.prepare(`
         INSERT INTO media_library (id, workspace_id, uploaded_by, file_name, asset_type, mime_type, storage_path, public_url, file_size_bytes, folder, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -8000,7 +8506,7 @@ ${cta}` : String(existing.post_copy).trim();
           db.prepare(`
             INSERT INTO subscriptions (id, organisation_id, workspace_id, plan_id, status, billing_cycle, current_period_start, current_period_end, created_at, updated_at)
             VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
-          `).run(crypto7.randomUUID(), ws.organisation_id, wid, plan.id, billingCycle, now, nextPeriodEnd, now, now);
+          `).run(crypto8.randomUUID(), ws.organisation_id, wid, plan.id, billingCycle, now, nextPeriodEnd, now, now);
         }
         db.prepare("UPDATE workspaces SET ai_credits_balance = MAX(ai_credits_balance, ?), updated_at = ? WHERE id = ?").run(
           Number(plan.monthly_ai_credits),
@@ -8107,7 +8613,7 @@ ${cta}` : String(existing.post_copy).trim();
       const normalized = email.trim().toLowerCase();
       const now = (/* @__PURE__ */ new Date()).toISOString();
       const existingUser = db.prepare("SELECT id FROM users WHERE email = ?").get(normalized);
-      const id = crypto7.randomUUID();
+      const id = crypto8.randomUUID();
       db.prepare(`
         INSERT INTO workspace_members (id, workspace_id, user_id, invited_email, role_slug, status, invited_by, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, 'invited', ?, ?, ?)
@@ -8148,7 +8654,7 @@ ${cta}` : String(existing.post_copy).trim();
         priority: z2.enum(["low", "medium", "high", "urgent"]).default("medium")
       }).parse(req.body);
       const now = (/* @__PURE__ */ new Date()).toISOString();
-      const id = crypto7.randomUUID();
+      const id = crypto8.randomUUID();
       db.prepare(`
         INSERT INTO support_tickets (id, workspace_id, owner_user_id, subject, message, priority, status, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?)
@@ -8712,12 +9218,12 @@ function mapAuditRow(r) {
 
 // server/routes/phase3.ts
 import { Router as Router2 } from "express";
-import crypto15 from "node:crypto";
+import crypto16 from "node:crypto";
 import { z as z3 } from "zod";
 
 // server/ai/modules/brandAnalysis.ts
 import { Type as Type2 } from "@google/genai";
-import crypto8 from "node:crypto";
+import crypto9 from "node:crypto";
 function mapBrandAnalysisRow(r) {
   return {
     id: String(r.id),
@@ -8823,7 +9329,7 @@ ${params.additionalNotes || "None"}`;
       required: ["brandSummary", "verifiedFacts", "assumptions", "audienceInsights", "contentThemes", "voiceGuidelines"]
     }
   });
-  const id = crypto8.randomUUID();
+  const id = crypto9.randomUUID();
   const now = (/* @__PURE__ */ new Date()).toISOString();
   db.prepare(
     `INSERT INTO ai_brand_analyses (
@@ -8917,7 +9423,7 @@ Live Analytics Snapshots Available: ${ctx.liveAnalytics.length}`;
 
 // server/ai/modules/contentStrategy.ts
 import { Type as Type4 } from "@google/genai";
-import crypto9 from "node:crypto";
+import crypto10 from "node:crypto";
 function mapStrategyRow(r) {
   return {
     id: String(r.id),
@@ -8996,7 +9502,7 @@ ${socialContextBlock}`;
       required: ["title", "executiveSummary", "pillars", "weeklyCadence", "kpis", "evidenceNote"]
     }
   });
-  const id = crypto9.randomUUID();
+  const id = crypto10.randomUUID();
   const now = (/* @__PURE__ */ new Date()).toISOString();
   db.prepare(
     `INSERT INTO ai_content_strategies (
@@ -9111,10 +9617,10 @@ Use HH:mm 24-hour format for suggestedLocalTime.`;
 
 // server/ai/modules/postWriting.ts
 import { Type as Type6 } from "@google/genai";
-import crypto11 from "node:crypto";
+import crypto12 from "node:crypto";
 
 // server/services/contentSafetyService.ts
-import crypto10 from "node:crypto";
+import crypto11 from "node:crypto";
 var MISLEADING_CLAIM_PATTERNS = [
   {
     pattern: /\b(guaranteed|100%\s*guaranteed)\s+(followers|growth|viral|sales|roi|income|results)\b/i,
@@ -9152,7 +9658,7 @@ var SENSITIVE_OR_SPAM_PATTERNS = [
 ];
 function computeContentHash(text, hashtags = []) {
   const normalized = `${text.trim().toLowerCase().replace(/\s+/g, " ")}|${hashtags.map((h) => h.trim().toLowerCase()).sort().join(",")}`;
-  return crypto10.createHash("sha256").update(normalized).digest("hex");
+  return crypto11.createHash("sha256").update(normalized).digest("hex");
 }
 function getWorkspaceBrandSafetyRules(db, workspaceId) {
   const row = db.prepare(
@@ -9392,7 +9898,7 @@ STRICT COMPLIANCE:
     checkDuplicate: true,
     checkFrequencyLimit: false
   });
-  const id = crypto11.randomUUID();
+  const id = crypto12.randomUUID();
   const now = (/* @__PURE__ */ new Date()).toISOString();
   db.prepare(
     `INSERT INTO generated_content (
@@ -9619,7 +10125,7 @@ Produce sharp, scannable flyer/graphic copy (headline <= 60 chars, subheadline <
 }
 
 // server/ai/modules/imageGeneration.ts
-import crypto12 from "node:crypto";
+import crypto13 from "node:crypto";
 import fs3 from "node:fs";
 import path3 from "node:path";
 var imageTestTransportOverride = null;
@@ -9660,7 +10166,7 @@ function getGeneratedMediaRootDir() {
   return isServerless ? "/tmp/livingtech-generated" : path3.resolve(process.cwd(), "public", "generated");
 }
 function saveImageBufferToWorkspacePublic(workspaceId, ext, buffer) {
-  const fileName = `graphic-${Date.now()}-${crypto12.randomBytes(4).toString("hex")}.${ext}`;
+  const fileName = `graphic-${Date.now()}-${crypto13.randomBytes(4).toString("hex")}.${ext}`;
   const relDir = path3.join("generated", workspaceId);
   const absDir = path3.join(getGeneratedMediaRootDir(), workspaceId);
   fs3.mkdirSync(absDir, { recursive: true });
@@ -9678,7 +10184,7 @@ async function runImageGenerationModule(db, params) {
   if (!ws || ws.ai_credits_balance < cost) {
     throw new Error(`Insufficient AI credits. Live image generation requires ${cost} credits.`);
   }
-  const imageId = crypto12.randomUUID();
+  const imageId = crypto13.randomUUID();
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const startedAt = Date.now();
   const recordFailure = (errorMessage) => {
@@ -9711,7 +10217,7 @@ async function runImageGenerationModule(db, params) {
           id, workspace_id, user_id, module_key, model_name, credits_used,
           prompt_tokens, completion_tokens, status, error_message, latency_ms, created_at
         ) VALUES (?, ?, ?, 'image_generation', 'external_image_service', 0, 0, 0, 'failed', ?, ?, ?)`
-      ).run(crypto12.randomUUID(), params.workspaceId, params.userId, errorMessage, Date.now() - startedAt, now);
+      ).run(crypto13.randomUUID(), params.workspaceId, params.userId, errorMessage, Date.now() - startedAt, now);
     })();
     const failedRow = db.prepare("SELECT * FROM generated_images WHERE id = ?").get(imageId);
     return {
@@ -9764,7 +10270,7 @@ async function runImageGenerationModule(db, params) {
     }
     const ext = mimeType.includes("jpeg") || mimeType.includes("jpg") ? "jpg" : "png";
     const saved = saveImageBufferToWorkspacePublic(params.workspaceId, ext, generatedBuffer);
-    const mediaId = crypto12.randomUUID();
+    const mediaId = crypto13.randomUUID();
     const fileName = `${params.graphicType}-${preset.id.replace(":", "x")}-${Date.now()}.${ext}`;
     db.transaction(() => {
       db.prepare("UPDATE workspaces SET ai_credits_balance = ai_credits_balance - ?, updated_at = ? WHERE id = ?").run(
@@ -9817,7 +10323,7 @@ async function runImageGenerationModule(db, params) {
           id, workspace_id, user_id, module_key, model_name, credits_used,
           prompt_tokens, completion_tokens, status, error_message, latency_ms, created_at
         ) VALUES (?, ?, ?, 'image_generation', ?, ?, 0, 0, 'completed', NULL, ?, ?)`
-      ).run(crypto12.randomUUID(), params.workspaceId, params.userId, modelName, cost, Date.now() - startedAt, now);
+      ).run(crypto13.randomUUID(), params.workspaceId, params.userId, modelName, cost, Date.now() - startedAt, now);
     })();
     const updatedWs = db.prepare("SELECT ai_credits_balance FROM workspaces WHERE id = ?").get(params.workspaceId);
     const stored = db.prepare("SELECT * FROM generated_images WHERE id = ?").get(imageId);
@@ -9840,8 +10346,8 @@ function saveRenderedGraphicToLibrary(db, params) {
   const preset = GRAPHIC_ASPECT_PRESETS.find((p) => p.id === params.aspectRatio) ?? GRAPHIC_ASPECT_PRESETS[0];
   const ext = mimeType.includes("jpeg") ? "jpg" : mimeType.includes("webp") ? "webp" : "png";
   const saved = saveImageBufferToWorkspacePublic(params.workspaceId, ext, buffer);
-  const mediaId = crypto12.randomUUID();
-  const imageId = crypto12.randomUUID();
+  const mediaId = crypto13.randomUUID();
+  const imageId = crypto13.randomUUID();
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const safeFileName = (params.fileName || `${params.graphicType}-${preset.id.replace(":", "x")}.${ext}`).slice(0, 120);
   db.transaction(() => {
@@ -10072,7 +10578,7 @@ Live Analytics Snapshots: ${hasLiveData ? JSON.stringify(ctx.liveAnalytics) : "N
 
 // server/ai/modules/commentReplyDrafting.ts
 import { Type as Type14 } from "@google/genai";
-import crypto13 from "node:crypto";
+import crypto14 from "node:crypto";
 var SENSITIVE_ESCALATION_PATTERNS = [
   /\b(lawsuit|legal|attorney|lawyer|sue|gdpr|data\s+breach|hacked|fraud|scam)\b/i,
   /\b(refund|chargeback|unauthorized\s+charge|billing\s+error|cancel\s+my\s+subscription)\b/i,
@@ -10145,7 +10651,7 @@ Set escalationRecommended=true if the message involves refunds, legal threats, p
     checkDuplicate: false,
     checkFrequencyLimit: false
   });
-  const id = crypto13.randomUUID();
+  const id = crypto14.randomUUID();
   const now = (/* @__PURE__ */ new Date()).toISOString();
   db.transaction(() => {
     db.prepare(
@@ -10184,7 +10690,7 @@ Set escalationRecommended=true if the message involves refunds, legal threats, p
 }
 
 // server/queue/publishingWorker.ts
-import crypto14 from "node:crypto";
+import crypto15 from "node:crypto";
 
 // server/services/publishingValidationService.ts
 function validatePostForPlatform(params) {
@@ -10248,7 +10754,7 @@ function validatePostForPlatform(params) {
 var publishExecutorOverride = null;
 var embeddedWorkerTimer = null;
 var lastWorkerTickAt = null;
-var WORKER_INSTANCE_ID = `lt-worker-${process.pid}-${crypto14.randomBytes(3).toString("hex")}`;
+var WORKER_INSTANCE_ID = `lt-worker-${process.pid}-${crypto15.randomBytes(3).toString("hex")}`;
 function mapPublishingQueueRow(r) {
   return {
     id: String(r.id),
@@ -10334,7 +10840,7 @@ function createWorkspaceNotification(db, params) {
   db.prepare(
     `INSERT INTO notifications (id, workspace_id, user_id, category, title, body, is_read, created_at, updated_at)
      VALUES (?, ?, ?, 'publishing', ?, ?, 0, ?, ?)`
-  ).run(crypto14.randomUUID(), params.workspaceId, params.userId, params.title, params.body, now, now);
+  ).run(crypto15.randomUUID(), params.workspaceId, params.userId, params.title, params.body, now, now);
 }
 function enqueuePublishingJob(db, params) {
   const cleanTags = normalizeHashtags(params.hashtags || []);
@@ -10398,7 +10904,7 @@ function enqueuePublishingJob(db, params) {
   const recurrenceRule = params.recurrenceRule ?? { type: "none" };
   const recurrenceType = recurrenceRule.type || "none";
   const contentHash = computeContentHash(params.bodyText, finalHashtags);
-  const idempotencyKey = params.idempotencyKey?.trim() || crypto14.createHash("sha256").update(`${params.workspaceId}:${params.socialAccountId || params.platformKey}:${contentHash}:${scheduledUtcIso}`).digest("hex").slice(0, 48);
+  const idempotencyKey = params.idempotencyKey?.trim() || crypto15.createHash("sha256").update(`${params.workspaceId}:${params.socialAccountId || params.platformKey}:${contentHash}:${scheduledUtcIso}`).digest("hex").slice(0, 48);
   const existingJob = db.prepare(
     `SELECT pq.*, sa.account_name, sa.account_handle
        FROM publishing_queue pq
@@ -10413,13 +10919,13 @@ function enqueuePublishingJob(db, params) {
     };
   }
   const now = (/* @__PURE__ */ new Date()).toISOString();
-  const queueId = crypto14.randomUUID();
-  const calendarItemId = crypto14.randomUUID();
-  const approvalId = requiresApproval && !params.saveAsDraft ? crypto14.randomUUID() : null;
+  const queueId = crypto15.randomUUID();
+  const calendarItemId = crypto15.randomUUID();
+  const approvalId = requiresApproval && !params.saveAsDraft ? crypto15.randomUUID() : null;
   let contentPostId = params.contentPostId ?? null;
   db.transaction(() => {
     if (!contentPostId) {
-      contentPostId = crypto14.randomUUID();
+      contentPostId = crypto15.randomUUID();
       const legacyStatus = initialStatus === "draft" ? "draft" : initialStatus === "awaiting_approval" ? "pending" : "scheduled";
       db.prepare(
         `INSERT INTO content_posts (
@@ -10671,7 +11177,7 @@ async function executePublishingQueueJob(db, queueId, options) {
   }
   const job = loadJob();
   const attemptNumber = job.attemptCount + 1;
-  const attemptId = crypto14.randomUUID();
+  const attemptId = crypto15.randomUUID();
   db.prepare(
     `INSERT INTO publishing_attempts (
       id, queue_id, workspace_id, social_account_id, platform_key, attempt_number,
@@ -10852,7 +11358,7 @@ async function executePublishingQueueJob(db, queueId, options) {
       account: { externalAccountId, capabilities },
       payload
     }) : isSandboxAccount ? (() => {
-      const externalPostId = `sandbox_${job.platformKey}_${crypto14.randomBytes(6).toString("hex")}`;
+      const externalPostId = `sandbox_${job.platformKey}_${crypto15.randomBytes(6).toString("hex")}`;
       return {
         externalPostId,
         permalink: buildSandboxPermalink(job.platformKey, externalPostId),
@@ -11338,7 +11844,7 @@ function createPhase3Router(db) {
       }).parse(req.body);
       const current = loadWorkspaceBrandProfile(db, wid);
       const doc = {
-        id: crypto15.randomUUID(),
+        id: crypto16.randomUUID(),
         name: body.name.trim(),
         category: body.category,
         summary: body.summary.trim(),
@@ -11780,7 +12286,7 @@ function createPhase3Router(db) {
         startDate: z3.string().nullable().optional(),
         endDate: z3.string().nullable().optional()
       }).parse(req.body);
-      const id = crypto15.randomUUID();
+      const id = crypto16.randomUUID();
       const now = (/* @__PURE__ */ new Date()).toISOString();
       db.prepare(
         `INSERT INTO content_campaigns (
@@ -12095,7 +12601,7 @@ function createPhase3Router(db) {
         authorHandle: z3.string().min(1).max(120),
         content: z3.string().min(1).max(2e3)
       }).parse(req.body);
-      const id = crypto15.randomUUID();
+      const id = crypto16.randomUUID();
       const now = (/* @__PURE__ */ new Date()).toISOString();
       db.prepare(
         `INSERT INTO engagement_messages (
@@ -12230,6 +12736,32 @@ function createExpressApp(db) {
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     next();
   });
+  app.use(async (req, res, next) => {
+    if (!isRtdbSyncEnabled()) {
+      return next();
+    }
+    const idToken = typeof req.headers["x-firebase-id-token"] === "string" && req.headers["x-firebase-id-token"].trim() ? req.headers["x-firebase-id-token"].trim() : void 0;
+    try {
+      await ensureRtdbHydrated(db, { authToken: idToken });
+    } catch {
+    }
+    const isMutation = req.method === "POST" || req.method === "PUT" || req.method === "PATCH" || req.method === "DELETE";
+    if (isMutation) {
+      const originalEnd = res.end.bind(res);
+      let persisted = false;
+      res.end = (...args) => {
+        if (persisted || res.statusCode >= 400) {
+          return originalEnd(...args);
+        }
+        persisted = true;
+        void persistDatabaseToRtdb(db, { authToken: idToken }).catch(() => void 0).finally(() => {
+          originalEnd(...args);
+        });
+        return res;
+      };
+    }
+    next();
+  });
   app.get("/auth/oauth/sandbox-consent", (req, res) => {
     const platform = String(req.query.platform || "facebook");
     const state = String(req.query.state || "");
@@ -12276,6 +12808,9 @@ function createExpressApp(db) {
         oauthError,
         errorDescription
       });
+      if (isRtdbSyncEnabled()) {
+        await persistDatabaseToRtdb(db).catch(() => void 0);
+      }
       return res.send(
         renderOAuthPopupResult({
           success: true,

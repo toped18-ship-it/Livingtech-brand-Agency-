@@ -52,6 +52,7 @@ import type {
   WorkspaceSubscriptionRecord,
   WorkspaceSummary,
 } from '../shared/api-contracts';
+import { getFirebaseIdToken } from './firebase';
 
 const TOKEN_STORAGE_KEY = 'lt_agency_bearer_token';
 
@@ -109,12 +110,16 @@ const PUBLIC_AUTH_PATHS = new Set([
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getStoredToken();
+  const firebaseIdToken = await getFirebaseIdToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...((options.headers as Record<string, string>) || {}),
   };
   if (token) {
     headers.Authorization = `Bearer ${token}`;
+  }
+  if (firebaseIdToken) {
+    headers['X-Firebase-Id-Token'] = firebaseIdToken;
   }
 
   const response = await fetch(`${API_BASE}${path}`, {

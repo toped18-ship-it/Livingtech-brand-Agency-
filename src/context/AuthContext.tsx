@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { apiClient, onSessionUnauthorized, setStoredToken } from '../lib/apiClient';
-import { signInWithGooglePopup, signOutFirebase } from '../lib/firebase';
+import { signInWithGooglePopup, signOutFirebase, syncSessionSnapshotToRtdb } from '../lib/firebase';
 import type { UserProfile, WorkspaceSummary } from '../shared/api-contracts';
 
 const ACTIVE_WS_KEY = 'lt_active_workspace_id';
@@ -105,6 +105,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(res.user);
     setSessionNotice(null);
     selectWorkspace(res.workspaces);
+    void syncSessionSnapshotToRtdb(res.user, res.workspaces);
   }, [selectWorkspace]);
 
   const register = useCallback(
@@ -120,6 +121,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(res.user);
       setSessionNotice(null);
       selectWorkspace(res.workspaces);
+      void syncSessionSnapshotToRtdb(res.user, res.workspaces);
       return { verificationToken: res.verificationToken };
     },
     [selectWorkspace]
@@ -141,6 +143,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(res.user);
     setSessionNotice(null);
     selectWorkspace(res.workspaces);
+    void syncSessionSnapshotToRtdb(res.user, res.workspaces);
   }, [selectWorkspace]);
 
   const logout = useCallback(async () => {
@@ -160,8 +163,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateWorkspacesState = useCallback(
     (nextList: WorkspaceSummary[], selectId?: string) => {
       selectWorkspace(nextList, selectId ?? activeWorkspaceId);
+      if (user) {
+        void syncSessionSnapshotToRtdb(user, nextList);
+      }
     },
-    [activeWorkspaceId, selectWorkspace]
+    [activeWorkspaceId, selectWorkspace, user]
   );
 
   const activeWorkspace =
